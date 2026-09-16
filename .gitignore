@@ -1,0 +1,55 @@
+# Build artifacts
+build/
+dist/
+outputs/
+*.spec.bak
+
+# Python caches and environments
+__pycache__/
+*.py[cod]
+*$py.class
+.pytest_cache/
+.mypy_cache/
+.ruff_cache/
+.coverage
+htmlcov/
+.venv/
+venv/
+env/
+
+# WorkBuddy project data and internal notes
+.workbuddy/
+工作日志.md
+待办与改进记录.md
+Codex配置管理器-需求文档.md
+
+# User/local configuration
+settings.json
+config.toml
+configs/
+*.local.json
+.env
+.env.*
+!.env.example
+
+# Temporary and editor files
+*.log
+*.tmp
+*.temp
+*.bak
+*.swp
+*.swo
+*~
+.vscode/
+.idea/
+.DS_Store
+Thumbs.db
+Desktop.ini
+*:Zone.Identifier
+
+# Packaging/signing material
+*.pfx
+*.p12
+*.cer
+*.key
+*.pem
