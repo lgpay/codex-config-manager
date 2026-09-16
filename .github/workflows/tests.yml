@@ -1,0 +1,33 @@
+name: Core tests
+
+on:
+  push:
+  pull_request:
+
+jobs:
+  test:
+    runs-on: windows-latest
+    timeout-minutes: 15
+    steps:
+      - uses: actions/checkout@v4
+      - uses: actions/setup-python@v5
+        with:
+          python-version: '3.13'
+      - name: Install dependencies
+        run: python -m pip install -r requirements-dev.txt
+      - name: Run isolated core and CLI tests
+        shell: pwsh
+        run: |
+          $ErrorActionPreference = 'Stop'
+          $env:CODEX_REAL_CONFIG_SMOKE = '0'
+          python src/test_core.py
+          python src/test_roundtrip.py
+          python src/test_userenv.py
+          python src/test_paths.py
+          python src/test_priority1.py
+          python src/test_models.py
+          python tools/t_toml.py
+          python tools/t_edit.py
+          python tools/t_cli.py
+        env:
+          CODEX_REAL_CONFIG_SMOKE: '0'
