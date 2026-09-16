@@ -1,0 +1,45 @@
+name: Bug 报告
+description: 报告可复现的问题
+labels: [bug]
+body:
+  - type: markdown
+    attributes:
+      value: |
+        请不要粘贴 API Key、完整 config.toml 或包含密钥的日志。
+  - type: input
+    id: version
+    attributes:
+      label: 版本
+      placeholder: 例如 0.1.0 或 Release SHA-256 前缀
+    validations:
+      required: true
+  - type: textarea
+    id: steps
+    attributes:
+      label: 复现步骤
+      description: 请提供最小、可复现的步骤，不要包含密钥。
+    validations:
+      required: true
+  - type: textarea
+    id: expected
+    attributes:
+      label: 期望行为
+    validations:
+      required: true
+  - type: textarea
+    id: actual
+    attributes:
+      label: 实际行为
+    validations:
+      required: true
+  - type: input
+    id: windows
+    attributes:
+      label: Windows 版本
+  - type: checkboxes
+    id: privacy
+    attributes:
+      label: 隐私确认
+      options:
+        - label: 我已确认内容不包含 API Key、令牌、私钥或完整真实配置。
+          required: true
