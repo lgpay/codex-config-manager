@@ -550,26 +550,47 @@ let CG_POLL = null;
 function cgSame(a, b){
   return !!a && !!b && a.windowed === b.windowed && a.running === b.running;
 }
-async function pollChatGPT(){
+/* 轮询「宿主是否在运行」—— 修复「已退出 Codex，切换按钮仍灰着」。
+   原先只有 ChatGPT 的状态在轮询，宿主运行状态（guard.running）只在界面渲染那一刻
+   算一次，退出后不会更新。这里同时刷新两者，且只在真的变化时才重绘。 */
+async function pollRuntime(){
   if (BUSY) return;                    // 忙时不打扰，避免与进行中的操作争状态
   const bd = $("backdrop");
   if (bd && bd.classList.contains("on")) return;   // 弹层打开时不刷新，避免与用户交互竞争
   const a = api();
-  if (!a || typeof a.chatgpt_state !== "function") return;
-  let r = null;
-  try { r = await a.chatgpt_state(); } catch (e) { return; }
-  if (!r || typeof r.windowed !== "boolean") return;
-  const cur = STATE ? STATE.chatgpt : null;
-  if (cgSame(cur, r)) return;           // 无变化不重绘，避免干扰正在看的内容
-  if (STATE) STATE.chatgpt = r;
-  renderChatGPTButton();                // 状态已并入按钮提示，无需重建整条状态栏
+  if (!a) return;
+  let g = null, cg = null;
+  const canHost = typeof a.host_state === "function";
+  const canCG = typeof a.chatgpt_state === "function";
+  if (!canHost && !canCG) return;
+  // 至少有一边可查才发请求，避免无谓往返。两边独立 try：一个失败不影响另一个。
+  if (canHost) { try { g = await a.host_state(); } catch (e) { g = null; } }
+  if (canCG) { try { cg = await a.chatgpt_state(); } catch (e) { cg = null; } }
+  let dirty = false;
+  // 宿主运行状态：只要拿到就信任，运行 / 未运行都要同步（按钮要能重新变可点）。
+  if (g && typeof g.running === "boolean" && STATE){
+    const prev = !!(STATE.guard && STATE.guard.running);
+    if (prev !== g.running){
+      STATE.guard = Object.assign({}, STATE.guard, {running: g.running, total: g.total});
+      dirty = true;
+    }
+  }
+  // ChatGPT 状态：沿用旧的「无变化不重绘」策略，避免干扰正在看的内容。
+  if (cg && typeof cg.windowed === "boolean" && STATE && !cgSame(STATE.chatgpt, cg)){
+    STATE.chatgpt = cg;
+    dirty = true;
+  }
+  if (!dirty) return;
+  renderSwitchButton();               // 运行状态已并入按钮提示与置灰判定
+  renderChatGPTButton();
+  renderButtons();                    // 「只同步」等菜单项同样依赖运行状态
 }
 // 点击启动后进程与窗口要几秒才起来，这里做一小串追赶式轮询尽快反映到按钮。
 function catchUpChatGPT(tries){
   let n = 0;
   const step = async () => {
     n++;
-    await pollChatGPT();
+    await pollRuntime();
     if (n < (tries || 4)) setTimeout(step, 1500);
   };
   setTimeout(step, 1200);
@@ -1675,8 +1696,15 @@ $("b-about").addEventListener("click", () => {
 /* ---------------- 启动 ---------------- */
 window.addEventListener("pywebviewready", async () => {
   await refresh(false);
-  // ChatGPT 运行状态联动：低频轮询，只在状态真的变化时才重绘状态条。
-  if (!CG_POLL) CG_POLL = setInterval(pollChatGPT, CG_POLL_MS);
+  // 运行状态（宿主 + ChatGPT）低频轮询：只在状态真的变化时才重绘。
+  if (!CG_POLL) CG_POLL = setInterval(pollRuntime, CG_POLL_MS);
+  // 轮询会在「弹层打开」或「界面忙碌」时主动跳过，那种情况下正好退出 Codex
+  // 就会留下一个过期的灰按钮。所以界面重新获得焦点时补查一次 ——
+  // 用户从 Codex 切回来点这个窗口，正是最需要它已经变可点的时刻。
+  window.addEventListener("focus", () => { pollRuntime(); });
+  document.addEventListener("visibilitychange", () => {
+    if (!document.hidden) pollRuntime();
+  });
   const box = $("log");
   box.innerHTML = `<span class="l hintline">就绪。共 ${STATE.presets.length} 个预设` +
     (STATE.current ? `，当前预设「${STATE.current}」` : "，尚无当前预设记录") +

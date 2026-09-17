@@ -1758,6 +1758,34 @@ def live_vs_preset(p: Paths, name: str | None) -> tuple[bool, int]:
     return True, n
 
 
+def host_running_now(p: Paths) -> dict:
+    """轻量查询「宿主是否在运行」（供界面按秒轮询）。
+
+    与 `run_guard(p)` 的区别：这里**只**枚举进程并匹配名单，
+    不读任何配置文件、不聚合命中明细 —— 实测单次约 9 ms（277 进程），
+    因此可以安全地按秒级频率轮询。
+
+    为什么需要它：`snapshot()` 里的 `guard.running` 只在界面渲染那一刻算一次，
+    用户退出 Codex / ChatGPT 之后不会自动更新，「切换」按钮就会一直灰着。
+    界面改为轮询本函数来实时反映「宿主已退出」。
+
+    任何异常都退化为「未在运行」：宁可让用户点一下再被真正拦截，
+    也不要让按钮无理由地灰掉（这是用户实际反馈过的坏体验）。
+    """
+    try:
+        pats, src = guard_list(p)
+        hits = match_processes(pats, list_processes(with_path=False))
+        return {"running": bool(hits), "total": len(hits),
+                "names": sorted({h["name"] for h in hits}), "source": src}
+    except Exception:                                          # noqa: BLE001
+        return {"running": False, "total": 0, "names": [], "source": "error"}
+
+
+def host_running(p: Paths) -> bool:
+    """只回答「宿主是否在运行」这一个问题。"""
+    return bool(host_running_now(p).get("running"))
+
+
 def snapshot(p: Paths) -> dict:
     """界面与 CLI 共用的当前状态快照。"""
     current, switched_at = read_state(p)

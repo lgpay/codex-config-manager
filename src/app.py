@@ -280,6 +280,22 @@ class Api:
         except Exception:                                      # noqa: BLE001
             return {"running": False, "windowed": False, "count": 0}
 
+    def host_state(self) -> dict:
+        """轻量查询「宿主（Codex / ChatGPT）是否在运行」，供界面轮询。
+
+        为什么单独开一个接口：`get_state` 会读配置目录、比对在用配置与全部预设，
+        成本高，只在渲染与操作完成后调用；而「运行状态」必须**实时** ——
+        用户退出 Codex 之后，切换按钮要能立刻恢复可点。判定本身只是枚举一次进程，
+        实测约 9 ms，轮询成本可以忽略。
+
+        任何异常都退化为「未在运行」：宁可让用户点一下再被真正拦截，
+        也不要让按钮无理由地一直灰着。
+        """
+        try:
+            return core.host_running_now(self.p)
+        except Exception:                                      # noqa: BLE001
+            return {"running": False, "total": 0, "names": [], "source": "error"}
+
     def launch_chatgpt(self) -> dict:
         """启动本机的 ChatGPT 桌面应用。
 

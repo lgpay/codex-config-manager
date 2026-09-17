@@ -31,5 +31,6 @@ jobs:
           python tools/t_toml.py
           python tools/t_edit.py
           python tools/t_cli.py
+          python tools/t_gui_liveguard.py
         env:
           CODEX_REAL_CONFIG_SMOKE: '0'

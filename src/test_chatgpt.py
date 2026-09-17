@@ -92,6 +92,31 @@ PRESET = 'model_provider = "mock"\nmodel = "m"\n'
 (p.lib / "mock.toml").write_text(PRESET, encoding="utf-8")
 p.live.write_text(PRESET, encoding="utf-8")
 core.write_state(p, "mock")
+print("\n5. host_running_now：界面轮询用的轻量宿主判定（IMP-029）")
+check("host_running_now 存在", callable(getattr(core, "host_running_now", None)))
+check("host_running 存在", callable(getattr(core, "host_running", None)))
+hr = core.host_running_now(p)
+check("返回 dict", isinstance(hr, dict), str(hr))
+check("键集合固定", set(hr) == {"running", "total", "names", "source"}, str(sorted(hr)))
+check("running 是布尔（不是 None / 字符串）", isinstance(hr["running"], bool), repr(hr.get("running")))
+check("names 是列表", isinstance(hr["names"], list), repr(hr.get("names")))
+check("中性名单下判定为未运行（未误伤真实进程）", hr["running"] is False, str(hr))
+check("host_running 与 host_running_now 结论一致",
+      core.host_running(p) == hr["running"], "bool=%r dict=%r" % (core.host_running(p), hr["running"]))
+
+# 异常必须退化为「未在运行」：宁可让用户点一下再被拦截，也不能让按钮无理由灰掉。
+_orig = core.guard_list
+try:
+    def _boom(_p):
+        raise OSError("simulated failure")
+    core.guard_list = _boom
+    hr2 = core.host_running_now(p)
+    check("内部异常时退化为未运行（不会让按钮永久灰掉）",
+          hr2["running"] is False and hr2["source"] == "error", str(hr2))
+finally:
+    core.guard_list = _orig
+check("异常后 guard_list 已还原", core.guard_list is _orig)
+
 snap = core.snapshot(p)
 check("snapshot 含 chatgpt 字段", "chatgpt" in snap, str(sorted(snap))[:200])
 check("chatgpt 字段结构正确",
