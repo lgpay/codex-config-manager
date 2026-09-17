@@ -8,7 +8,17 @@
 全程在临时 CODEX_HOME 中运行；连接测试只验证「确认门槛 + 一次性 token」，
 绝不真正联网（避免 12s 超时与真实计费）。核心层网络安全断言由 test_priority1 锁定。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import os
+
 import shutil
 import sys
 import tempfile
@@ -68,6 +78,7 @@ core.write_state(paths, "example")
 paths.live.write_text(PRESET, encoding="utf-8")
 
 import webview  # noqa: E402
+
 
 api = app.Api(paths)
 win = webview.create_window(ui.APP_TITLE, html=ui.HTML, js_api=api,

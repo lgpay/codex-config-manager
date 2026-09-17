@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 """命令行通道自检：info / set / edit 的参数处理，全程隔离。"""
 import os
+
 import shutil
 import sys
 import tempfile
@@ -180,6 +190,7 @@ r = api.run("edit", "example-pro", {"form_json": '"a string"'})
 chk("非对象被拒", "error" in r, r)
 
 import time  # noqa: E402
+
 r = api.run("edit", "example-pro", {"form_json": __import__("json").dumps(dict(
     {k: f.get(k) or "" for k in app.SET_FIELDS},
     preset="example-pro", new_name="example-pro", base_url="https://api2.example/v1"))})

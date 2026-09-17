@@ -7,7 +7,17 @@
 
 进程数据全部**注入**，不依赖本机真实安装；窗口枚举只做只读调用。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import os
+
 import sys
 import tempfile
 from pathlib import Path
@@ -129,6 +139,7 @@ check("预设列表仍正常", [x["name"] for x in snap["presets"]] == ["mock"],
 
 # 清理
 import shutil  # noqa: E402
+
 shutil.rmtree(tmp, ignore_errors=True)
 
 print("\n" + "=" * 72)

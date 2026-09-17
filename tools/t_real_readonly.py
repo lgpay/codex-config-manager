@@ -14,6 +14,15 @@
     python tools/t_real_readonly.py            # 默认只读复核
     CODEX_REAL_HOME=<别的目录> python tools/t_real_readonly.py
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import hashlib
 import os
 import sys

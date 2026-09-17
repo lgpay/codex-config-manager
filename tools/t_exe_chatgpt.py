@@ -8,6 +8,15 @@
 
 只做只读烟测：不点击启动按钮、不真的启动 ChatGPT、不写任何配置。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import ctypes
 import hashlib
 import os

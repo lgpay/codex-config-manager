@@ -4,6 +4,15 @@
 所有用例都用**注入的应用列表**，不查询真实系统、不调用 explorer.exe；
 唯一涉及系统的一处（subprocess）也被 patch 掉。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import subprocess
 import unittest
 from unittest.mock import patch

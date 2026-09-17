@@ -15,7 +15,17 @@
 全程在临时 CODEX_HOME 中运行；用中性 .guard 隔离本机正在运行的宿主，
 不触碰真实配置、不联网、不弱化任何安全断言。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import hashlib
+
 import os
 import shutil
 import sys
@@ -75,6 +85,7 @@ def fingerprint():
 BEFORE = fingerprint()
 
 import webview  # noqa: E402
+
 
 api = app.Api(paths)
 win = webview.create_window(ui.APP_TITLE, html=ui.HTML, js_api=api,

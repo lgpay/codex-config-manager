@@ -14,6 +14,14 @@ import core  # noqa: E402
 import ui  # noqa: E402
 import webview  # noqa: E402
 
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
+
 OK = FAIL = 0
 
 def chk(name, cond, extra=""):

@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 """模型列表与最小模型调用：只连接本地临时 HTTP mock。"""
 import json
 import os

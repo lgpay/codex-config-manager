@@ -5,6 +5,15 @@
 不依赖用户真实预设库里是否存在某个名字 —— 否则用户删掉该预设后，
 `edit example` 会直接报错退出，整段打包 GUI 烟测就变成假失败。
 """
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 import ctypes
 import hashlib
 import os

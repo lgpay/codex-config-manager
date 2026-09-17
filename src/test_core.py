@@ -3,6 +3,13 @@
 import hashlib, os, sys, shutil, tempfile, textwrap
 from pathlib import Path
 
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 sys.path.insert(0, str(Path(__file__).resolve().parent))
 import core
 

@@ -1,4 +1,13 @@
 # -*- coding: utf-8 -*-
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 """配置路径设置、解析、探测与热切换测试；所有写入均在临时目录。"""
 import json
 import os

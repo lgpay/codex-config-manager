@@ -50,6 +50,14 @@ new_lib.mkdir()
 
 paths, context = core.Paths.for_gui()
 import webview  # noqa: E402
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+try:
+    sys.stdout.reconfigure(encoding="utf-8", errors="replace")
+    sys.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 api = app.Api(paths, path_context=context, settings_file=settings)
 win = webview.create_window(ui.APP_TITLE, html=ui.HTML, js_api=api,
                             width=980, height=720, min_size=(780, 560))

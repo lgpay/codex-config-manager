@@ -1,6 +1,16 @@
 # -*- coding: utf-8 -*-
+
+# --- 输出编码：CI（windows-latest）控制台默认 cp1252，中文断言名会 UnicodeEncodeError ---
+import sys as _sys_enc
+try:
+    _sys_enc.stdout.reconfigure(encoding="utf-8", errors="replace")
+    _sys_enc.stderr.reconfigure(encoding="utf-8", errors="replace")
+except Exception:
+    pass
+
 """历史恢复、未保存提醒、复制删除的无头 GUI 探针；全程临时 CODEX_HOME。"""
 import os
+
 import shutil
 import sys
 import tempfile
@@ -51,6 +61,7 @@ live_hist.parent.mkdir(parents=True, exist_ok=True)
 live_hist.write_bytes(b'model = "restored-live"\n')
 
 import webview  # noqa: E402
+
 
 api = app.Api(paths)
 win = webview.create_window(ui.APP_TITLE, html=ui.HTML, js_api=api,
