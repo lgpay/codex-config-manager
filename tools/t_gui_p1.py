@@ -124,18 +124,18 @@ def worker():
         chk("标题为「新建配置向导」",
             "新建配置向导" in (js("document.getElementById('m-title').textContent") or ""),
             js("document.getElementById('m-title').textContent"))
-        chk("默认官方：第三方字段隐藏",
-            js("document.getElementById('w-third').style.display") == "none",
-            js("document.getElementById('w-third').style.display"))
+        # IMP-026：官方模板不再渲染这些字段（原来是 display:none 隐藏）
+        chk("默认官方：完全没有第三方字段",
+            js("!document.getElementById('w-third') && !document.getElementById('w-model')"),
+            js("!!document.getElementById('w-third')"))
 
         # 切到第三方
         js("""(() => { const s = document.getElementById('w-kind');
               s.value = 'third_party';
               s.dispatchEvent(new Event('change')); return 1; })()""")
         time.sleep(0.5)
-        chk("切第三方：第三方字段显示",
-            js("document.getElementById('w-third').style.display") == "block",
-            js("document.getElementById('w-third').style.display"))
+        chk("切第三方：第三方字段出现",
+            js("!!document.getElementById('w-third') && !!document.getElementById('w-model')"))
         chk("切第三方：连接测试按钮可用",
             js("document.getElementById('w-connect').disabled") is False)
         # 切回官方
@@ -143,8 +143,8 @@ def worker():
               s.value = 'official';
               s.dispatchEvent(new Event('change')); return 1; })()""")
         time.sleep(0.5)
-        chk("切回官方：第三方字段隐藏",
-            js("document.getElementById('w-third').style.display") == "none")
+        chk("切回官方：第三方字段再次消失",
+            js("!document.getElementById('w-third') && !document.getElementById('w-model')"))
 
         print("== IMP-005：连接确认弹层显式列出安全项（向导内）== ")
         js("""(() => { const s=document.getElementById('w-kind');
@@ -167,19 +167,54 @@ def worker():
         close_modal()
         time.sleep(0.5)
 
-        print("== IMP-003：官方模板从空创建、不继承第三方设置 ==")
+        print("== IMP-003 / IMP-026：官方模板 = 完全空白预设（由宿主补齐）==")
         r = api_call("api().preview_new('official', 'wiz_off', {})")
         chk("官方预览 ok", bool(r and r.get("ok")), r)
         txt = (r or {}).get("text", "")
         chk("官方模板不含 model_provider", "model_provider" not in txt, txt[:160])
         chk("官方模板不含 base_url", "base_url" not in txt, txt[:160])
         chk("官方模板不含 env_key", "env_key" not in txt, txt[:160])
+        chk("官方模板不含 model 键", "model" not in txt, txt[:160])
+        chk("官方模板没有任何键（只留说明注释）",
+            all("=" not in line for line in txt.splitlines()), txt[:160])
         try:
             import tomllib
-            tomllib.loads(txt)
+            data = tomllib.loads(txt)
             chk("官方模板是合法 TOML", True)
+            chk("官方模板解析结果为空（空白配置）", data == {}, data)
         except Exception as e:  # noqa: BLE001
             chk("官方模板是合法 TOML", False, str(e))
+
+        print("== IMP-026：官方模板忽略表单里的任何字段（界面不给，后端也兜底）==")
+        r = api_call("api().preview_new('official', 'wiz_off2', "
+                     "{model:'x', model_provider:'p', base_url:'https://p.example/v1', "
+                     "env_key:'P_KEY', wire_api:'responses'})")
+        txt2 = (r or {}).get("text", "")
+        chk("即使表单塞了字段，官方模板仍是空白",
+            bool(r and r.get("ok")) and txt2 == txt, txt2[:160])
+
+        print("== IMP-026：自定义模型模板只写大模型相关设置 ==")
+        r = api_call("api().preview_new('third_party', 'wiz_custom', "
+                     "{model:'m', model_provider:'p', base_url:'https://p.example/v1', "
+                     "env_key:'P_KEY', wire_api:'responses'})")
+        txt3 = (r or {}).get("text", "")
+        chk("自定义模型预览 ok", bool(r and r.get("ok")), r)
+        try:
+            import tomllib
+            d3 = tomllib.loads(txt3)
+            chk("自定义模板顶层只有 model / model_provider / model_providers 三键",
+                sorted(d3.keys()) == ["model", "model_provider", "model_providers"],
+                sorted(d3.keys()))
+            chk("自定义模板只有被引用的一个供应商块",
+                list((d3.get("model_providers") or {}).keys()) == ["p"], d3.get("model_providers"))
+            prov = (d3.get("model_providers") or {}).get("p") or {}
+            chk("供应商块字段就是界面填的那三项",
+                sorted(prov.keys()) == ["base_url", "env_key", "wire_api"], sorted(prov.keys()))
+        except Exception as e:  # noqa: BLE001
+            chk("自定义模板是合法 TOML", False, str(e))
+        chk("自定义模板不掺入项目 / 插件等宿主设置",
+            not any(k in txt3 for k in ("projects", "plugins", "mcp_servers", "history", "tui")),
+            txt3[:200])
 
         print("== IMP-003：第三方缺字段被拒 ==")
         r = api_call("api().preview_new('third_party', 'wiz_tp', {model:'x'})")

@@ -5,6 +5,7 @@
 全程在临时 CODEX_HOME 中运行。
 """
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -29,6 +30,24 @@ def chk(name, cond, extra=""):
     else:
         FAIL += 1
         print(f"  FAIL {name} {extra}")
+
+
+def same_len_url(orig):
+    """构造一个与原 URL **等长**、形态合法的替换 URL。
+
+    用于验证「等长替换不改变字节数」。骨架为 `https://probe<pad>.example/v1`，
+    pad 按长度差补齐，因此不依赖任何硬编码长度。
+    """
+    base = "https://probe.example/v1"                       # 24 字符
+    if len(orig) >= len(base):
+        return "https://probe" + "x" * (len(orig) - len(base)) + ".example/v1"
+    return base
+
+
+def parse_byte_pair(text):
+    """从差异提示里取出 `旧 → 新` 的字节数；取不到返回 (None, None)。"""
+    m = re.search(r"(\d+)\s*→\s*(\d+)", text or "")
+    return (int(m.group(1)), int(m.group(2))) if m else (None, None)
 
 
 PRESET = '''model_provider = "example"
@@ -82,6 +101,10 @@ def wait_ready(timeout=12):
 
 
 def worker():
+    # 隔离：核心层用 os.environ 判断「密钥已设置」，这里显式设一个假的隔离值，
+    # 使该断言不依赖本机真实用户环境变量；只影响本进程，结束时恢复。
+    prev_api_key = os.environ.get("EXAMPLE_API_KEY")
+    os.environ["EXAMPLE_API_KEY"] = "probe-isolated-value-not-a-real-key"
     try:
         chk("界面就绪（STATE 已加载）", wait_ready(), "STATE 未就绪")
         time.sleep(0.4)
@@ -121,7 +144,9 @@ def worker():
         chk("段名标签正确",
             js("document.getElementById('e-sectag').textContent") == "[model_providers.example]",
             js("document.getElementById('e-sectag').textContent"))
-        chk("密钥已设置提示", "已设置" in (js("document.getElementById('m-body').textContent") or ""))
+        chk("密钥已设置提示（隔离环境变量下）",
+            "已设置" in (js("document.getElementById('m-body').textContent") or ""),
+            (js("document.getElementById('m-body').textContent") or "")[:200])
         chk("当前预设提示为 warn", js("!!document.querySelector('#m-body .fnote.warn')"))
 
         print("== 布局不裁切 ==")
@@ -146,20 +171,32 @@ def worker():
         chk("提示无差异", "完全一致" in info0, info0)
 
         print("== 实时差异预览：改 URL ==")
+        # 构造与原值**等长**的替换 URL：断言只考察「等长替换不改字节数」，
+        # 不把 URL 长度差混进字节数校验。
+        orig_url = js("document.getElementById('e-url').value") or ""
+        probe_url = same_len_url(orig_url)
+        chk("替换 URL 与原值等长", len(probe_url) == len(orig_url),
+            "%r(%d) vs %r(%d)" % (probe_url, len(probe_url), orig_url, len(orig_url)))
         js("""(() => { const e = document.getElementById('e-url');
-              e.value = 'https://probe.example/v1';
-              e.dispatchEvent(new Event('input')); return 1; })()""")
+              e.value = %s;
+              e.dispatchEvent(new Event('input')); return 1; })()""" % repr(probe_url))
         time.sleep(0.9)
         info1 = js("document.getElementById('e-diffinfo').textContent") or ""
         chk("只算一处改动", "改动 1 处" in info1, info1)
         chk("提示字节数", "字节" in info1, info1)
-        chk("字节数持平（新旧 URL 等长）", "255 → 255" in info1 or info1.split("·")[1].split("字节")[0].split("→")[0].strip()
-            == info1.split("·")[1].split("字节")[0].split("→")[1].strip(), info1)
+        b_before, b_after = parse_byte_pair(info1)
+        chk("字节数可解析", b_before is not None, info1)
+        if b_before is not None:
+            chk("等长替换后字节数持平（差值 = 0）", b_after - b_before == 0, info1)
+            # 基数必须来自当前真实内容，而不是写死的 255
+            disk = (paths.lib / "example.toml").stat().st_size
+            chk("字节数基数取自真实文件而非硬编码", abs(b_before - disk) <= 2,
+                "info=%s disk=%d" % (info1, disk))
         rows = js("[...document.querySelectorAll('#e-diff .r')].map(x=>x.className+':'+x.textContent)")
         joined = "\n".join(rows or [])
         chk("差异里出现删除行", any(r.startswith("r del") for r in (rows or [])), joined)
         chk("差异里出现新增行", any(r.startswith("r add") for r in (rows or [])), joined)
-        chk("新 URL 在差异中", "probe.example" in joined, joined)
+        chk("新 URL 在差异中", probe_url in joined, joined)
 
         print("== 段名标签跟随输入 ==")
         js("""(() => { const e = document.getElementById('e-provider');
@@ -319,6 +356,10 @@ def worker():
         import traceback
         chk("探针未抛异常", False, traceback.format_exc()[-900:])
     finally:
+        if prev_api_key is None:
+            os.environ.pop("EXAMPLE_API_KEY", None)
+        else:
+            os.environ["EXAMPLE_API_KEY"] = prev_api_key
         try:
             win.destroy()
         except Exception:                                       # noqa: BLE001

@@ -20,6 +20,7 @@ import threading
 import secrets
 import time
 import connection
+import launcher
 import userenv
 
 sys.path.insert(0, os.path.dirname(os.path.abspath(__file__)))
@@ -263,6 +264,45 @@ class Api:
                 "source": self.path_context.get("source", "explicit"),
                 "configs_source": self.path_context.get("configs_source", "explicit")}
 
+    def chatgpt_state(self) -> dict:
+        """轻量查询本机 ChatGPT 的运行状态（供界面轮询与「启动 ChatGPT」按钮联动）。
+
+        与 `get_state` 的区别：这里**只**枚举进程与顶层窗口（毫秒级），
+        不读配置目录、不比对文件，因此可以安全地按秒级频率轮询。
+
+        `windowed` 表示「界面已经打开」（存在可见顶层窗口）；MSIX 桌面应用关闭窗口后
+        常驻后台，只看进程会把「其实没开界面」误判成已在运行，所以两者分开返回。
+
+        任何异常都退化为「未打开」：宁可让用户多点一下，也不要让按钮无理由灰掉。
+        """
+        try:
+            return core.chatgpt_state()
+        except Exception:                                      # noqa: BLE001
+            return {"running": False, "windowed": False, "count": 0}
+
+    def launch_chatgpt(self) -> dict:
+        """启动本机的 ChatGPT 桌面应用。
+
+        安全约束：只通过系统登记的应用标识（AUMID）启动，不猜测 WindowsApps 里的
+        exe 路径，也不读取登录凭据或修改任何配置。找不到明确入口时返回可读失败信息，
+        不做模糊兜底，避免误启动无关程序。
+
+        与配置切换/保存等任务互斥：启动期间置位 `_running`，避免用户误以为
+        “配置已经切换完成”的时序被打破；结束后无条件恢复，不覆盖配置任务结果。
+        """
+        with self._lock:
+            if self._running:
+                return {"ok": False,
+                        "error": "有操作正在执行，请完成后再启动 ChatGPT。"}
+            self._running = True
+        try:
+            return launcher.launch_chatgpt()
+        except Exception:
+            return {"ok": False, "error": "启动 ChatGPT 时出现未知错误。"}
+        finally:
+            with self._lock:
+                self._running = False
+
     def choose_folder(self) -> dict:
         if not self._window:
             return {"ok": False, "error": "系统目录选择对话框当前不可用，可手动输入绝对路径。"}
@@ -358,6 +398,7 @@ class Api:
                     "guard": {"patterns": list(core.DEFAULT_GUARD), "source": "default",
                               "source_text": "", "running": False, "hits": [],
                               "total": 0},
+                    "chatgpt": {"running": False, "windowed": False, "count": 0},
                     "error": f"{type(e).__name__}: {e}"}
 
     def confirm_info(self, name, opts=None) -> dict:

@@ -26,6 +26,8 @@ jobs:
           python src/test_paths.py
           python src/test_priority1.py
           python src/test_models.py
+          python src/test_launcher.py
+          python src/test_chatgpt.py
           python tools/t_toml.py
           python tools/t_edit.py
           python tools/t_cli.py

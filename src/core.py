@@ -28,13 +28,19 @@ from pathlib import Path
 
 DEFAULT_GUARD = ("ChatGPT.exe", "codex.exe", "codex-*.exe")
 
+# 「启动 ChatGPT」按钮的联动判定：**只看 ChatGPT 自身**。
+# 刻意不复用 guard 名单：guard 是宿主合并名单（ChatGPT.exe + codex.exe + codex-*.exe），
+# 且可被用户自定义；拿它判断会让「只有 codex.exe 在跑」误判成「ChatGPT 已打开」。
+CHATGPT_PROCESS = "ChatGPT.exe"
+_CHATGPT_PROCESS_LOWER = CHATGPT_PROCESS.lower()
+
 PRESET_NAME_RE = re.compile(r"^[A-Za-z0-9_-]{1,64}$")
 RESERVED_NAMES = {"state", "guard", "history", "live", "presets", "config"}
 
 TS_FMT = "%Y%m%d-%H%M%S"
 TS_FMT_HUMAN = "%Y-%m-%d %H:%M:%S"
 
-VERSION = "0.1.0"
+VERSION = "0.2.0"
 SETTINGS_SCHEMA_VERSION = 1
 SETTINGS_ENV = "CODEX_CONFIG_MANAGER_SETTINGS"
 SETTINGS_APP_DIR = "CodexConfigManager"
@@ -1024,36 +1030,51 @@ def run_edit(p: Paths, name: str, form: dict, *, force: bool = False,
         return {"ok": False, "blocked": False, "lines": rep.lines, "warns": warn_codes}
 
 
+# 官方模板 = **完全空白**的预设：不写 model / model_provider，也不写任何
+# [model_providers.*] 块。首次用 Codex / ChatGPT 打开时会由宿主自动补齐官方
+# 默认配置，工具不替用户猜一个模型名。
+OFFICIAL_BLANK_TEXT = (
+    "# Codex 官方配置（空白预设）\n"
+    "# 未写入任何设置；切换到它后，首次打开 Codex / ChatGPT 时会自动补齐官方默认配置。\n"
+)
+
+
 def new_preset_text(kind: str, form: dict) -> str:
-    """从空模板创建；官方配置不继承第三方设置或登录文件。"""
+    """从空模板创建；官方配置不继承第三方设置或登录文件。
+
+    · 官方模板 = **完全空白**（只有说明注释，不含任何键）；
+    · 自定义模型模板 = **只写大模型相关设置**（model / model_provider /
+      [model_providers.*] 块）；项目、插件等其余内容都不写，
+      与官方模板一样交给宿主在打开时补齐。
+    """
     if kind not in ("official", "third_party", "local", "responses", "chat"):
         raise CoreError("请选择有效配置模板。")
+    import tomllib
+    if kind == "official":
+        tomllib.loads(OFFICIAL_BLANK_TEXT)      # 空白模板本身也必须是合法 TOML
+        return OFFICIAL_BLANK_TEXT
     fields = {k: form.get(k, "") for k in
               ("model", "model_provider", "reasoning", "prov_name", "base_url", "env_key", "wire_api")}
-    if kind == "official":
-        fields.update(model_provider="", prov_name="", base_url="", env_key="", wire_api="")
-    else:
-        if kind == "local":
-            fields["base_url"] = fields["base_url"] or "http://127.0.0.1:11434/v1"
-            fields["wire_api"] = fields["wire_api"] or "chat"
-            fields["model_provider"] = fields["model_provider"] or "local"
-            fields["env_key"] = fields["env_key"] or "LOCAL_API_KEY"
-        elif kind == "responses":
-            fields["wire_api"] = "responses"
-        elif kind == "chat":
-            fields["wire_api"] = "chat"
-        for key, label in (("model", "模型 ID"), ("model_provider", "供应商 ID"),
-                           ("base_url", "Base URL"), ("env_key", "API Key 环境变量名"),
-                           ("wire_api", "接口协议")):
-            if not str(fields.get(key) or "").strip():
-                raise CoreError(f"请填写{label}。")
-        from connection import validate_endpoint
-        validate_endpoint(str(fields["base_url"]).strip())
+    if kind == "local":
+        fields["base_url"] = fields["base_url"] or "http://127.0.0.1:11434/v1"
+        fields["wire_api"] = fields["wire_api"] or "chat"
+        fields["model_provider"] = fields["model_provider"] or "local"
+        fields["env_key"] = fields["env_key"] or "LOCAL_API_KEY"
+    elif kind == "responses":
+        fields["wire_api"] = "responses"
+    elif kind == "chat":
+        fields["wire_api"] = "chat"
+    for key, label in (("model", "模型 ID"), ("model_provider", "供应商 ID"),
+                       ("base_url", "Base URL"), ("env_key", "API Key 环境变量名"),
+                       ("wire_api", "接口协议")):
+        if not str(fields.get(key) or "").strip():
+            raise CoreError(f"请填写{label}。")
+    from connection import validate_endpoint
+    validate_endpoint(str(fields["base_url"]).strip())
     errs = validate_llm_form(fields)
     if errs:
         raise CoreError("；".join(errs.values()))
     text = apply_form_to_text("# Codex 配置预设\n", fields)
-    import tomllib
     tomllib.loads(text)
     return text
 
@@ -1162,6 +1183,15 @@ _TH32CS_SNAPPROCESS = 0x00000002
 _PROCESS_QUERY_LIMITED_INFORMATION = 0x1000
 _INVALID_HANDLE_VALUE = ctypes.c_void_p(-1).value
 
+# 顶层窗口枚举（用于区分「ChatGPT 界面已打开」与「仅有后台驻留进程」）。
+# WINFUNCTYPE / WinDLL 只在 Windows 存在，非 Windows 下置 None 由调用方短路。
+if sys.platform.startswith("win"):
+    _WNDENUMPROC = ctypes.WINFUNCTYPE(wintypes.BOOL, wintypes.HWND, wintypes.LPARAM)
+else:
+    _WNDENUMPROC = None
+
+_MIN_WINDOW_SIDE = 80   # 边长小于此值视为隐藏辅助窗口，不计入「界面已打开」
+
 
 class _PROCESSENTRY32W(ctypes.Structure):
     _fields_ = [
@@ -1251,6 +1281,97 @@ def match_processes(patterns: list[str], procs=None) -> list[dict]:
                 hits.append({"name": name, "pid": pid, "path": path})
                 break
     return hits
+
+
+def chatgpt_processes(procs=None) -> list[dict]:
+    """只匹配 ChatGPT 应用自身的进程（**不含** `codex.exe`）。
+
+    见 `CHATGPT_PROCESS` 注释：不要把 `guard.running` 的结果拿来做这个判断，
+    两者语义不同（guard 是宿主合并名单，且可被用户自定义）。
+    """
+    if procs is None:
+        procs = list_processes(with_path=False)
+    out: list[dict] = []
+    for pid, name, path in procs:
+        if (name or "").strip().lower() == _CHATGPT_PROCESS_LOWER:
+            out.append({"name": name, "pid": pid, "path": path})
+    return out
+
+
+def visible_window_pids(pids) -> set[int]:
+    """返回给定进程集合中**拥有可见顶层窗口**的 pid 集合。
+
+    用途：MSIX 桌面应用关闭窗口后常驻后台，只看进程会把「界面其实没打开」
+    误判成「已经在运行」，按钮就永远灰着。这里以「存在可见且非微型的顶层窗口」
+    作为「界面已打开」的判据。
+
+    任何异常或非 Windows 平台一律返回空集合 —— 调用方据此按「未打开」处理，
+    宁可多让用户点一下，也不要让按钮无理由不可用。
+    """
+    if _WNDENUMPROC is None or not pids:
+        return set()
+    want = {int(x) for x in pids}
+    try:
+        u32 = ctypes.WinDLL("user32", use_last_error=True)
+        u32.GetWindowThreadProcessId.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.DWORD)]
+        u32.GetWindowThreadProcessId.restype = wintypes.DWORD
+        u32.IsWindowVisible.argtypes = [wintypes.HWND]
+        u32.IsWindowVisible.restype = wintypes.BOOL
+        u32.GetWindowRect.argtypes = [wintypes.HWND, ctypes.POINTER(wintypes.RECT)]
+        u32.GetWindowRect.restype = wintypes.BOOL
+        u32.EnumWindows.argtypes = [_WNDENUMPROC, wintypes.LPARAM]
+        u32.EnumWindows.restype = wintypes.BOOL
+    except Exception:                                          # noqa: BLE001
+        return set()
+
+    found: set[int] = set()
+
+    def _cb(hwnd, _lparam):
+        if hwnd is None:
+            return True
+        pid = wintypes.DWORD(0)
+        try:
+            u32.GetWindowThreadProcessId(hwnd, ctypes.byref(pid))
+        except Exception:                                      # noqa: BLE001
+            return True
+        if pid.value not in want:
+            return True
+        try:
+            if not u32.IsWindowVisible(hwnd):
+                return True
+            rect = wintypes.RECT()
+            if not u32.GetWindowRect(hwnd, ctypes.byref(rect)):
+                return True
+            if ((rect.right - rect.left) < _MIN_WINDOW_SIDE
+                    or (rect.bottom - rect.top) < _MIN_WINDOW_SIDE):
+                return True
+        except Exception:                                      # noqa: BLE001
+            return True
+        found.add(pid.value)
+        # 所有目标进程都找到可见窗口后即可停止枚举
+        return len(found) < len(want)
+
+    try:
+        u32.EnumWindows(_WNDENUMPROC(_cb), 0)
+    except Exception:                                          # noqa: BLE001
+        return set()
+    return found
+
+
+def chatgpt_state(procs=None) -> dict:
+    """「启动 ChatGPT」按钮所需的联动状态。
+
+    * `running`  —— 存在 `ChatGPT.exe` 进程（含仅有后台驻留的情况）
+    * `windowed` —— 存在可见的 ChatGPT 顶层窗口，即**界面已经打开**
+    * `count`    —— 进程数量（该应用运行时有多个同名实例，仅供参考）
+
+    按钮可用性应由 `windowed` 决定：界面已打开时重复启动没有意义；
+    而只有后台驻留进程时仍应允许点击（AUMID 激活会把已有实例带到前台）。
+    """
+    procs = list_processes(with_path=False) if procs is None else list(procs)
+    hits = chatgpt_processes(procs)
+    windowed = bool(visible_window_pids([h["pid"] for h in hits]))
+    return {"running": bool(hits), "windowed": windowed, "count": len(hits)}
 
 
 def aggregate_hits(hits: list[dict]) -> list[dict]:
@@ -1667,6 +1788,14 @@ def snapshot(p: Paths) -> dict:
     pats, src = guard_list(p)
     procs = list_processes(with_path=True)
     hits = match_processes(pats, procs)
+    # 「启动 ChatGPT」联动状态：复用同一份进程快照，零额外枚举成本。
+    # 注意只看 ChatGPT 自身，不等同于上面的 guard（宿主合并名单）。
+    _cg_procs = chatgpt_processes(procs)
+    chatgpt = {
+        "running": bool(_cg_procs),
+        "windowed": bool(visible_window_pids([x["pid"] for x in _cg_procs])),
+        "count": len(_cg_procs),
+    }
 
     return {
         "version": VERSION,
@@ -1692,6 +1821,7 @@ def snapshot(p: Paths) -> dict:
             "hits": aggregate_hits(hits),
             "total": len(hits),
         },
+        "chatgpt": chatgpt,
     }
 
 

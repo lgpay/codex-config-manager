@@ -3,7 +3,8 @@
 
 验证本轮产品化改动（不改动核心层与配置保护逻辑）：
   * 顶部「当前配置」hero 正确渲染正在使用的预设与快捷操作；
-  * 低频操作收纳进「高级操作」<details>，且 b-diff/b-guard/b-dry 仍可用；
+  * 低频操作收纳进顶部「工具」菜单（IMP-021 起取代原 <details class="adv">），
+    且 b-diff/b-guard/b-dry 仍可用；
   * 首次空态引导（.empty.onboard）出现；
   * 读取报错时给出友好提示（hero 显示「配置状态读取失败」）；
   * 既有测试 selector 仍保留（.card / .primary / b-edit），保证旧探针不回归。
@@ -102,17 +103,20 @@ def worker():
         chk("hero 节点存在", js("!!document.getElementById('hero')"))
         chk("hero 显示正在使用", "正在使用" in (js("document.getElementById('hero').textContent") or ""))
         chk("hero 显示当前预设名", "example" in (js("document.getElementById('hero').textContent") or ""))
-        chk("hero 有「编辑当前预设」按钮", js("!!document.getElementById('b-edit-cur')"))
-        chk("hero 有「切换到所选预设」按钮", js("!!document.getElementById('b-switch-cur')"))
-        chk("hero 含使用引导文案", "切换到此预设" in (js("document.getElementById('hero').textContent") or ""))
+        # IMP-024：hero 变成纯信息区，不再挂常驻按钮；动作统一到列表标题行与菜单
+        chk("hero 不再挂常驻按钮（b-edit-cur/b-switch-cur 已移除）",
+            js("!document.getElementById('b-edit-cur') && !document.getElementById('b-switch-cur')"))
+        chk("hero 含使用引导文案", "切换" in (js("document.getElementById('hero').textContent") or ""))
         # 布局不裁切：hero 在视口内
         geo = js("""(() => { const h = document.getElementById('hero');
           const r = h.getBoundingClientRect();
           return {top: Math.round(r.top), bottom: Math.round(r.bottom), vh: innerHeight}; })()""")
         chk("hero 未被挤出视口", geo and geo["top"] >= 0 and geo["bottom"] <= geo["vh"] + 1, geo)
 
-        print("== IMP-001：高级操作收纳（保持 selector 与安全机制） ==")
-        chk("高级操作 details 存在", js("!!document.querySelector('#actions details.adv')"))
+        print("== IMP-021：低频/诊断收纳进顶部「工具」菜单（保持 selector 与安全机制） ==")
+        chk("工具菜单面板存在", js("!!document.querySelector('#menubar .mpanel')"))
+        chk("低频项已从常驻区移到菜单里",
+            js("!!document.querySelector('#menubar .mpanel #b-diff')"))
         chk("高级操作含 查看差异", js("!!document.getElementById('b-diff')"))
         chk("高级操作含 诊断宿主进程", js("!!document.getElementById('b-guard')"))
         chk("高级操作含 演练", js("!!document.getElementById('b-dry')"))
@@ -132,8 +136,9 @@ def worker():
         chk("保留 .primary（切换到）", js("!!document.querySelector('#b-switch.primary')"))
         chk("保留 b-edit", js("!!document.getElementById('b-edit')"))
 
-        print("== hero 的「编辑当前预设」真的能打开编辑器 ==")
-        js("document.getElementById('b-edit-cur').click();")
+        print("== 「编辑所选配置…」（配置菜单）真的能打开编辑器 ==")
+        js("SELECTED='example'; renderPresets(); renderButtons();"
+           " document.getElementById('b-edit').click();")
         chk("编辑器弹层打开", wait_modal(True))
         time.sleep(0.8)
         chk("编辑器标题含预设名", "example" in (js("document.getElementById('m-title').textContent") or ""))
@@ -141,8 +146,8 @@ def worker():
         time.sleep(0.3)
         chk("Esc 关闭弹层", js("document.getElementById('backdrop').classList.contains('on')") is False)
 
-        print("== hero 的「切换到所选预设」接通切换流程 ==")
-        js("document.getElementById('b-switch-cur').click();")
+        print("== 列表标题行的「切换」接通切换流程 ==")
+        js("document.getElementById('b-switch').click();")
         chk("切换确认弹层打开", wait_modal(True))
         t = js("document.getElementById('m-title').textContent") or ""
         chk("弹层为「确认切换」", "确认切换" in t, t)
@@ -159,7 +164,10 @@ def worker():
             js("!!document.querySelector('.empty.onboard')"))
         chk("空态含步骤列表", js("!!document.querySelector('.empty.onboard ol.steps')"))
         chk("空态含欢迎文案", "欢迎使用" in (js("document.querySelector('.empty.onboard').textContent") or ""))
-        chk("空态含「另存为新预设」按钮", js("!!document.getElementById('b-save-empty')"))
+        chk("空态引导指向「配置 › 新建配置向导」",
+            "新建配置向导" in (js("document.querySelector('.empty.onboard').textContent") or ""))
+        chk("空态引导指向卡片右键 / 配置菜单",
+            "右键" in (js("document.querySelector('.empty.onboard').textContent") or ""))
         chk("空态下 hero 显示「尚未记录当前预设」",
             "尚未记录" in (js("document.getElementById('hero').textContent") or ""))
 
@@ -178,12 +186,20 @@ def worker():
         js("refresh(false);")
         time.sleep(0.8)
 
-        print("== 布局不裁切：主区域未被挤出视口 ==")
+        print("== 布局不裁切：主区域 / 右侧边栏未被挤出视口 ==")
         geo2 = js("""(() => {
-          const a = document.querySelector('#actions'), b = document.querySelector('.body');
-          const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-          return {av: Math.round(ra.bottom), bv: Math.round(rb.bottom), vh: innerHeight}; })()""")
-        chk("操作区底部在视口内", geo2 and geo2["av"] <= geo2["vh"] + 1, geo2)
+          const s = document.querySelector('.status'), b = document.querySelector('.body');
+          const sb = document.querySelector('#sidebar');
+          const rb = b.getBoundingClientRect(), rs = s.getBoundingClientRect();
+          const rsb = sb.getBoundingClientRect();
+          return {bh: Math.round(rb.height), sv: Math.round(rs.bottom), vh: innerHeight,
+                  sbw: Math.round(rsb.width), sbb: Math.round(rsb.bottom)}; })()""")
+        chk("主区有高度且状态条底部在视口内",
+            geo2 and isinstance(geo2, dict) and geo2.get("bh", 0) > 0 and geo2["sv"] <= geo2["vh"] + 1,
+            geo2)
+        chk("右侧边栏宽度合理且底部在视口内",
+            isinstance(geo2, dict) and 0 < geo2.get("sbw", 0) < 260 and geo2.get("sbb", 10 ** 6) <= geo2["vh"] + 1,
+            geo2)
         LOG.append(geo2)
     except Exception as e:  # noqa: BLE001
         import traceback

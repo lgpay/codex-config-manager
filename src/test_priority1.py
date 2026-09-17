@@ -51,6 +51,23 @@ class Priority1(unittest.TestCase):
         self.assertFalse(self.p.live.exists())
         self.assertFalse(self.p.state.exists())
         self.assertEqual(__import__('tomllib').loads(core.new_preset_text('official', {})), {})
+        # IMP-026：官方模板 = 完全空白（连 model 都不写，交给宿主在打开时补齐）
+        self.assertNotIn('model', text)
+        self.assertTrue(all('=' not in line for line in text.splitlines()), text)
+        # 即使表单里塞了字段，官方模板也必须忽略（界面不给，后端兜底）
+        self.assertEqual(core.new_preset_text('official', FORM),
+                         core.new_preset_text('official', {}))
+
+    def test_custom_template_only_model_config(self):
+        # IMP-026：自定义模型模板只写大模型相关设置，不掺入项目 / 插件等宿主设置
+        self.assertTrue(self.create('custom', 'third_party')['ok'])
+        text = core.read_text(core.preset_path(self.p, 'custom'))
+        data = __import__('tomllib').loads(text)
+        self.assertEqual(sorted(data.keys()), ['model', 'model_provider', 'model_providers'])
+        self.assertEqual(list(data['model_providers'].keys()), [FORM['model_provider']])
+        self.assertEqual(data['model_providers'][FORM['model_provider']]['base_url'], FORM['base_url'])
+        for other in ('projects', 'plugins', 'mcp_servers', 'history', 'tui'):
+            self.assertNotIn(other, text)
 
     def test_third_party_required_and_toml(self):
         for key in ('model', 'model_provider', 'base_url', 'env_key', 'wire_api'):

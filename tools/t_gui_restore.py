@@ -89,8 +89,12 @@ def worker():
         print("== 新入口 ==")
         for bid in ("b-copy", "b-delete", "b-history"):
             chk(f"{bid} 存在", js(f"!!document.getElementById('{bid}')"))
-        chk("复制删除在更多操作", js("!!document.getElementById('b-copy').closest('details.adv')") and
-            js("!!document.getElementById('b-delete').closest('details.adv')"))
+        chk("复制/删除已收进「配置」菜单",
+            js("!!document.querySelector('#menubar .mpanel #b-copy')")
+            and js("!!document.querySelector('#menubar .mpanel #b-delete')"))
+        chk("历史恢复已收进「工具」菜单",
+            js("!!document.querySelector('#menubar .mpanel #b-history')"))
+        chk("复制/删除同时可经卡片右键到达", js("!!document.getElementById('ctxmenu')"))
         chk("当前配置删除按钮禁用", js("document.getElementById('b-delete').disabled") is True)
 
         print("== 编辑器 dirty：无变化不打扰 ==")
@@ -171,8 +175,24 @@ def worker():
         time.sleep(.8)
         labels = js("[...document.getElementById('hist-id').options].map(x=>x.textContent)") or []
         chk("结构化显示来源时间大小", any("预设 b" in x and "字节" in x for x in labels), labels)
-        js("(()=>{const h=document.getElementById('hist-id');const o=[...h.options].find(x=>x.textContent.includes('预设 b')&&x.textContent.includes('2026-09-16 05:05:05'));h.value=o.value;h.dispatchEvent(new Event('change'));const t=document.getElementById('hist-target');t.value='preset:b';t.dispatchEvent(new Event('change'));})()")
+        # 两次 change 必须分开触发并各自等预览跑完：连发时两个异步预览响应到达顺序不定，
+        # 后到的响应会重渲染弹层并把恢复目标重置回默认项，导致恢复「打错目标」
+        # （表现为 b.toml 未变、live 被改，偶发且难查）。
+        js("(()=>{const h=document.getElementById('hist-id');"
+           "const o=[...h.options].find(x=>x.textContent.includes('预设 b')"
+           "&&x.textContent.includes('2026-09-16 05:05:05'));"
+           "if(!o)return 0;h.value=o.value;h.dispatchEvent(new Event('change'));return 1;})()")
         time.sleep(1.0)
+        chk("已选中带时间戳的历史条目",
+            "2026-09-16 05:05:05" in (js(
+                "(document.getElementById('hist-id').selectedOptions[0]||{}).textContent") or ""),
+            js("(document.getElementById('hist-id').selectedOptions[0]||{}).textContent"))
+        js("(()=>{const t=document.getElementById('hist-target');t.value='preset:b';"
+           "t.dispatchEvent(new Event('change'));})()")
+        time.sleep(1.0)
+        chk("恢复目标已选为「预设 b」",
+            js("document.getElementById('hist-target').value") == "preset:b",
+            js("document.getElementById('hist-target').value"))
         chk("差异预览已渲染", (js("document.getElementById('hist-diff').getBoundingClientRect().height") or 0) > 16)
         chk("差异包含历史内容", "restored-model" in (js("document.getElementById('hist-diff').textContent") or ""))
         js("document.querySelector('#m-foot button:last-child').click()")
@@ -180,8 +200,11 @@ def worker():
         js("document.querySelector('#m-foot button:last-child').click()")
         chk("恢复任务完成", wait("(typeof BUSY !== 'undefined' && BUSY) ? 0 : 1", 1, 12))
         time.sleep(.7)
-        chk("非当前预设已恢复", (paths.lib / "b.toml").read_bytes() == HIST)
-        chk("非当前恢复不碰 live", paths.live.read_text(encoding="utf-8") == A)
+        _bt = paths.lib / "b.toml"
+        _bnow = _bt.read_bytes() if _bt.exists() else b"<missing b.toml>"
+        chk("非当前预设已恢复", _bnow == HIST, "实际=%r 期望=%r" % (_bnow, HIST))
+        _lnow = paths.live.read_text(encoding="utf-8")
+        chk("非当前恢复不碰 live", _lnow == A, "实际=%r" % (_lnow[:160],))
         chk("历史文件未删除", hist.exists())
     except Exception as exc:  # noqa: BLE001
         import traceback

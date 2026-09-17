@@ -12,14 +12,15 @@ import ssl
 import time
 from urllib.parse import urlsplit
 
-from core import CoreError, validate_llm_form
+from core import CoreError, VERSION, validate_llm_form
 
 TIMEOUT = 12
 MAX_RESPONSE_BYTES = 1024 * 1024
 MAX_MODELS = 200
 MAX_MODEL_ID = 256
 MAX_ERROR_TEXT = 240
-USER_AGENT = "CodexConfigManager/0.1.0 (network test)"
+# 版本号只在 core.VERSION 维护一处，避免发版时漏改这里
+USER_AGENT = f"CodexConfigManager/{VERSION} (network test)"
 
 
 def _is_local_host(hostname: str) -> bool:

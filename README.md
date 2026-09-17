@@ -1,5 +1,8 @@
 # Codex 配置管理器
 
+[![核心测试](https://github.com/lgpay/codex-config-manager/actions/workflows/tests.yml/badge.svg)](https://github.com/lgpay/codex-config-manager/actions/workflows/tests.yml)
+[![最新发布](https://img.shields.io/github/v/release/lgpay/codex-config-manager)](https://github.com/lgpay/codex-config-manager/releases/latest)
+
 一个面向 Windows 的 Codex 配置预设管理工具，提供图形界面和命令行双通道。
 
 > **非官方项目**：本项目与 OpenAI 无隶属、赞助或官方认可关系。“Codex”“OpenAI”及相关标识属于其各自权利人。
@@ -15,6 +18,8 @@
 - 支持 Responses API 与 Chat Completions 的最小调用测试
 - 首次路径探测、自定义 Codex 配置目录和预设目录
 - Codex 运行状态保护、未保存提醒和脱敏错误信息
+- 一键启动本机 ChatGPT 桌面应用：与「切换」同处预设列表右侧的操作边栏，与运行状态联动（界面已打开时自动禁用）
+- 顶栏「配置 / 工具 / 帮助」菜单栏与预设卡片右键菜单：界面常驻动作只保留「切换」和「启动 ChatGPT」两个按钮
 - 单文件 Windows GUI；同一程序也支持 CLI 子命令
 
 ## 系统要求
@@ -27,13 +32,13 @@
 
 ### 使用发布版
 
-从 GitHub Releases 下载 `CodexConfigManager.exe`，双击运行。程序是免安装单文件，不需要管理员权限。
+从 [GitHub Releases](https://github.com/lgpay/codex-config-manager/releases/latest) 下载 `CodexConfigManager.exe`（可一并下载 `SHA256SUMS.txt` 核对哈希），双击运行。程序是免安装单文件，不需要管理员权限。
 
 > 当前发布文件尚未进行商业代码签名，Windows SmartScreen 可能显示提示。请仅从可信的仓库 Release 页面下载，并核对发布页提供的 SHA-256。
 
 ### 配置位置
 
-GUI 会在首次运行时探测配置位置，也可在“更多操作 → 配置位置”中修改。
+GUI 会在首次运行时探测配置位置，也可在顶部菜单“工具 → 配置位置…”中修改。
 
 优先级如下：
 
@@ -94,6 +99,8 @@ py -3.13 -m venv .venv
 .\.venv\Scripts\python.exe src\test_paths.py
 .\.venv\Scripts\python.exe src\test_priority1.py
 .\.venv\Scripts\python.exe src\test_models.py
+.\.venv\Scripts\python.exe src\test_launcher.py
+.\.venv\Scripts\python.exe src\test_chatgpt.py
 .\.venv\Scripts\python.exe tools\t_toml.py
 .\.venv\Scripts\python.exe tools\t_edit.py
 .\.venv\Scripts\python.exe tools\t_cli.py

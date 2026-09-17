@@ -1,8 +1,14 @@
 # -*- coding: utf-8 -*-
-"""验证打包后的 exe：`edit <名>` 能弹出窗口并停在编辑器上，且只读不写盘。"""
+"""验证打包后的 exe：`edit <名>` 能弹出窗口并停在编辑器上，且只读不写盘。
+
+隔离原则（IMP-017）：自带一个临时 CODEX_HOME（含名为 example 的预设），
+不依赖用户真实预设库里是否存在某个名字 —— 否则用户删掉该预设后，
+`edit example` 会直接报错退出，整段打包 GUI 烟测就变成假失败。
+"""
 import ctypes
 import hashlib
 import os
+import shutil
 import subprocess
 import sys
 import tempfile
@@ -23,6 +29,27 @@ TARGETS = ([HOME / ".codex" / "config.toml",
             HOME / ".codex" / "configs" / "official.toml",
             HOME / ".codex" / "configs" / ".state"] if REAL_SMOKE else [])
 
+ISO_PRESET = '''model_provider = "example"
+model = "iso-model"
+model_reasoning_effort = "medium"
+[model_providers.example]
+name = "Isolated Example"
+base_url = "https://iso.example.invalid/v1"
+env_key = "ISO_API_KEY"
+wire_api = "responses"
+'''
+
+# 隔离的临时 CODEX_HOME：自带所需预设。CODEX_HOME 在路径解析里优先于 GUI settings，
+# 因此可以完全锁定到这里，不会碰到用户真实配置。
+ISO_DIR = tempfile.mkdtemp(prefix="exe-codex-home-")
+ISO = core.Paths(ISO_DIR)
+core.ensure_layout(ISO)
+ISO.guard.write_text("__test_neutral_guard__.exe\n", encoding="utf-8")
+(ISO.lib / "example.toml").write_text(ISO_PRESET, encoding="utf-8")
+ISO.live.write_text(ISO_PRESET, encoding="utf-8")
+core.write_state(ISO, "example")
+ISO_TARGETS = [ISO.live, ISO.lib / "example.toml", ISO.state]
+
 OK = FAIL = 0
 
 
@@ -36,8 +63,9 @@ def chk(name, cond, extra=""):
         print(f"  FAIL {name} {extra}")
 
 
-def fingerprint():
-    return {str(p): hashlib.md5(p.read_bytes()).hexdigest() for p in TARGETS if p.exists()}
+def fingerprint(paths=None):
+    src = (TARGETS + ISO_TARGETS) if paths is None else paths
+    return {str(p): hashlib.md5(p.read_bytes()).hexdigest() for p in src if p.exists()}
 
 
 u32 = ctypes.WinDLL("user32", use_last_error=True)
@@ -70,12 +98,13 @@ def proc_list():
     return [nm for _pid, nm, _p in core.list_processes(with_path=False)]
 
 
-print("== 打包后 GUI：edit example ==")
+print("== 打包后 GUI：edit example（隔离 CODEX_HOME）==")
 before = fingerprint()
 settings_probe = tempfile.TemporaryDirectory(prefix="exe-settings-")
 env = dict(os.environ)
 env[core.SETTINGS_ENV] = str(Path(settings_probe.name) / "settings.json")
-p = subprocess.Popen([EXE, "edit", "example"], cwd=str(HOME), env=env)
+env["CODEX_HOME"] = ISO_DIR
+p = subprocess.Popen([EXE, "edit", "example"], cwd=ISO_DIR, env=env)
 hwnd = None
 t0 = time.time()
 while time.time() - t0 < 25:
@@ -133,8 +162,10 @@ if hwnd:
 
 print("== 只读性：配置文件指纹未变 ==")
 after = fingerprint()
-chk("全部目标文件 md5 未变", before == after,
+chk("全部目标文件 md5 未变（含隔离目录）", before == after,
     {k: (before.get(k), after.get(k)) for k in before if before.get(k) != after.get(k)})
+chk("隔离目录的检测目标全部存在", all(p.exists() for p in ISO_TARGETS),
+    [str(p) for p in ISO_TARGETS if not p.exists()])
 for k, v in sorted(after.items()):
     print(f"      {v[:12]}  {k}")
 
@@ -145,5 +176,6 @@ chk("无窗口弹出", not find_window("Codex 配置管理器"))
 print("      stderr/stdout:", (r.stdout or b"").decode("utf-8", "replace").strip()[:200])
 
 settings_probe.cleanup()
+shutil.rmtree(ISO_DIR, ignore_errors=True)
 print(f"\n通过 {OK} / 失败 {FAIL}")
 sys.exit(1 if FAIL else 0)

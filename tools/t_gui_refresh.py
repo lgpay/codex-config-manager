@@ -1,9 +1,10 @@
 # -*- coding: utf-8 -*-
-"""UI 刷新（2026-09-15）无头 GUI 探针。
+"""UI 刷新（2026-09-15）无头 GUI 探针；IMP-024 迁移到新界面结构。
 
 验证「简洁界面」重构不破坏功能、选择器与安全逻辑：
-  * 首页只含「当前配置(hero) / 配置列表(plist) / 主要操作(新建·编辑·启用…)」；
-  * 大段说明收纳进「使用帮助」(b-help，按需打开)，低频/诊断收进「更多操作」(details.adv)；
+  * 首页只含「当前配置(hero) / 配置列表(plist)」，常驻动作只剩「切换」与「启动 ChatGPT」；
+  * 大段说明收纳进「使用帮助」(b-help，按需打开)，低频/诊断收进顶部「工具」菜单
+    （IMP-021 起取代原 `details.adv`；本探针同步迁移到菜单内定位）；
   * 全部原功能可达：b-diff / b-guard / b-recovery / b-new(向导) / b-edit / b-switch 均可用；
   * 连接安全文案（TLS / 不跟随跳转 / 超时 / 费用）在向导连接确认弹层仍显式列出；
   * 覆盖配置确认（保存并启用）文案不变。
@@ -109,30 +110,32 @@ def worker():
         chk("hero（当前配置）节点存在", js("!!document.getElementById('hero')"))
         chk("hero 显示「正在使用」", "正在使用" in (js("document.getElementById('hero').textContent") or ""))
         chk("plist（配置列表）渲染卡片", js("!!document.querySelector('.card')"))
-        chk("主要操作：切换到（b-switch）", js("!!document.getElementById('b-switch')"))
-        chk("主要操作：新建（b-new）", js("!!document.getElementById('b-new')"))
-        chk("主要操作：编辑（b-edit）", js("!!document.getElementById('b-edit')"))
-        chk("主要操作：另存（b-save）", js("!!document.getElementById('b-save')"))
-        chk("主要操作：只同步（b-harvest）", js("!!document.getElementById('b-harvest')"))
-        # 主要操作直接可见（不在 details.adv 内）
-        chk("b-new 不在「更多操作」折叠内",
-            js("!document.getElementById('b-new').closest('details.adv')"))
-        chk("b-edit 不在「更多操作」折叠内",
-            js("!document.getElementById('b-edit').closest('details.adv')"))
+        # IMP-021~025：常驻动作只剩两个按钮，且都进预设右侧的操作边栏
+        chk("切换按钮在右侧边栏内", js("!!document.querySelector('#sidebar #b-switch')"))
+        chk("启动按钮也在同一个边栏内", js("!!document.querySelector('#sidebar #b-chatgpt')"))
+        chk("主区只有这两个按钮", js("document.querySelectorAll('.body button').length") == 2)
+        chk("原右侧「操作」栏已移除", js("!document.getElementById('actions')"))
 
-        print("== 低频/诊断收纳进「更多操作」==")
-        chk("「更多操作」details.adv 存在", js("!!document.querySelector('#actions details.adv')"))
-        chk("次级含 查看差异", js("!!document.getElementById('b-diff')"))
-        chk("次级含 诊断宿主进程", js("!!document.getElementById('b-guard')"))
-        chk("次级含 演练", js("!!document.getElementById('b-dry')"))
-        chk("次级含 如何恢复", js("!!document.getElementById('b-recovery')"))
-        # 这些按钮在 details.adv 内
-        chk("b-diff 在「更多操作」折叠内",
-            js("!!document.getElementById('b-diff').closest('details.adv')"))
+        print("== 功能迁入顶部菜单栏（配置 / 工具 / 帮助）==")
+        chk("菜单栏存在且有 3 个下拉", js("document.querySelectorAll('#menubar .mgroup').length") == 3)
+        in_menu = {
+            "b-new": "配置", "b-edit": "配置", "b-save": "配置",
+            "b-copy": "配置", "b-delete": "配置",
+            "b-harvest": "工具", "b-diff": "工具", "b-history": "工具",
+            "b-guard": "工具", "b-dry": "工具", "b-paths": "工具",
+            "b-help": "帮助", "b-recovery": "帮助", "b-about": "帮助",
+        }
+        for bid, menu in in_menu.items():
+            chk(f"{bid} 在「{menu}」菜单内",
+                js("""(() => { const t=[...document.querySelectorAll('#menubar .mtitle')]
+                          .find(x=>x.textContent.trim()===%r);
+                        if(!t) return false;
+                        return !!t.parentElement.querySelector('.mpanel #%s'); })()""" % (menu, bid)))
+        chk("原 details.adv 折叠已移除", js("!document.querySelector('details.adv')"))
 
-        print("== 状态条紧凑（无大段说明常驻）==")
+        print("== 状态条紧凑（运行状态改为按钮提示，不再常驻 pill）==")
         chk("状态条存在且有内容", (js("document.getElementById('status').children.length") or 0) > 0)
-        chk("状态条含守卫 pill", js("!!document.querySelector('#status .pill')"))
+        chk("状态条已无运行状态 pill", js("document.querySelectorAll('#status .pill').length") == 0)
 
         print("== 使用帮助（按需打开，收纳原内联说明 + 安全信息）==")
         js("document.getElementById('b-help').click();")
@@ -183,7 +186,7 @@ def worker():
         time.sleep(0.5)
 
         print("== 切换到所选预设 接通切换确认（中性守卫下启用）==")
-        js("document.getElementById('b-switch-cur').click();")
+        js("document.getElementById('b-switch').click();")
         chk("切换确认弹层打开", wait_modal(True))
         time.sleep(0.3)
         chk("弹层为「确认切换」", "确认切换" in (js("document.getElementById('m-title').textContent") or ""))
@@ -228,12 +231,18 @@ def worker():
         close_modal()
         time.sleep(0.5)
 
-        print("== 布局不裁切：主区域在视口内 ==")
+        print("== 布局不裁切：主区域 / 右侧边栏都在视口内 ==")
         geo = js("""(() => {
-          const a = document.querySelector('#actions'), b = document.querySelector('.body');
-          const ra = a.getBoundingClientRect(), rb = b.getBoundingClientRect();
-          return {av: Math.round(ra.bottom), bv: Math.round(rb.bottom), vh: innerHeight}; })()""")
-        chk("操作区底部在视口内", geo and geo["av"] <= geo["vh"] + 1, geo)
+          const s = document.querySelector('.status'), b = document.querySelector('.body');
+          const sb = document.querySelector('#sidebar');
+          const rb = b.getBoundingClientRect(), rs = s.getBoundingClientRect();
+          const rsb = sb.getBoundingClientRect();
+          return {bh: Math.round(rb.height), sv: Math.round(rs.bottom), vh: innerHeight,
+                  sbh: Math.round(rsb.height), sbb: Math.round(rsb.bottom)}; })()""")
+        chk("主区有高度且状态条底部在视口内",
+            geo and geo["bh"] > 0 and geo["sv"] <= geo["vh"] + 1, geo)
+        chk("右侧边栏有高度且底部在视口内",
+            geo and geo["sbh"] > 0 and geo["sbb"] <= geo["vh"] + 1, geo)
     except Exception as e:  # noqa: BLE001
         import traceback
         chk("探针未抛异常", False, traceback.format_exc()[-900:])

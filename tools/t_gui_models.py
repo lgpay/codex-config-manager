@@ -105,11 +105,27 @@ def worker():
         js("document.getElementById('b-new').click()")
         chk("新建向导打开", wait_modal(True))
         opts = js("Array.from(document.getElementById('w-kind').options).map(x=>x.value).join(',')") or ""
-        chk("向导包含五种模板", opts == "official,third_party,local,responses,chat", opts)
-        js("document.getElementById('w-kind').value='local'; document.getElementById('w-kind').dispatchEvent(new Event('change'))")
+        # IMP-026：模板从五种精简为两种，且官方模板 = 空白预设
+        chk("向导只保留两个模板", opts == "official,third_party", opts)
+        labels = js("Array.from(document.getElementById('w-kind').options).map(x=>x.textContent)") or []
+        chk("两个模板分别是官方服务与自定义模型",
+            len(labels) == 2 and "官方服务" in labels[0] and "自定义模型" in labels[1], labels)
+        chk("官方模板只问预设名，不给模型 / 地址 / 检查按钮",
+            js("!!document.getElementById('w-new_name') && !document.getElementById('w-model')"
+               " && !document.getElementById('w-base_url') && !document.getElementById('w-api_key')"
+               " && !document.getElementById('w-check') && !document.getElementById('w-connect')"))
+        chk("官方模板说明写明「空白预设」并由宿主补齐",
+            "空白预设" in (js("document.getElementById('w-guide').textContent") or "")
+            and "自动补齐" in (js("document.getElementById('w-guide').textContent") or ""))
+        js("document.getElementById('w-kind').value='third_party'; document.getElementById('w-kind').dispatchEvent(new Event('change'))")
         time.sleep(.4)
-        chk("本地模板自动填写示例地址", js("document.getElementById('w-base_url').value") == "http://127.0.0.1:11434/v1")
-        chk("本地模板明确可修改", "示例" in (js("document.getElementById('w-guide').textContent") or ""))
+        chk("切到自定义模型后出现大模型字段",
+            js("!!document.getElementById('w-model') && !!document.getElementById('w-base_url')"
+               " && !!document.getElementById('w-api_key') && !!document.getElementById('w-check')"))
+        chk("自定义模型说明写明只写大模型配置",
+            "只写大模型相关设置" in (js("document.getElementById('w-guide').textContent") or ""))
+        chk("自定义模型默认协议为 responses",
+            js("document.getElementById('w-wire_api').value") == "responses")
         js("document.getElementById('w-base_url').value='http://127.0.0.1:%d/v1'; document.getElementById('w-env_key').value='MODEL_GUI_KEY'; document.getElementById('w-api_key').value='gui-secret-never-real'; document.getElementById('w-models').click()" % server.server_port)
         chk("向导获取模型确认框打开", wait_modal(True))
         js("document.querySelector('#m-foot button:last-child').click()")

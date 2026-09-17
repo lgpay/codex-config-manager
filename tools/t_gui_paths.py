@@ -76,9 +76,12 @@ def worker():
         chk("向导有目录与文件选择", js("!!document.getElementById('path-home-dir')&&!!document.getElementById('path-home-file')&&!!document.getElementById('path-configs-dir')"))
         chk("向导说明不搬移删除", "不搬移、不删除" in (js("document.getElementById('m-body').textContent") or ""))
         js(f"document.getElementById('path-home').value={json.dumps(str(old_home))};document.getElementById('path-home').dispatchEvent(new Event('input'));document.getElementById('path-follow').checked=true;document.getElementById('path-follow').dispatchEvent(new Event('change'))")
-        time.sleep(.7)
-        preview=js("document.getElementById('path-preview').textContent") or ""
-        chk("确认页显示 config.toml 与预设数", "config.toml" in preview and "预设 1 个" in preview, preview)
+        # updatePathPreview 是异步的（await validate_paths），固定 sleep 在机器忙时会抢跑 —— 改成轮询断言
+        chk("确认页显示 config.toml 与预设数",
+            wait("(() => { const t=document.getElementById('path-preview'); if(!t) return false;"
+                 " const s=t.textContent||'';"
+                 " return s.indexOf('config.toml')>=0 && s.indexOf('预设 1 个')>=0; })()", True),
+            js("document.getElementById('path-preview').textContent"))
         js("document.querySelector('#m-foot button:last-child').click()")
         chk("首次设置保存并关闭", wait("document.getElementById('backdrop').classList.contains('on')",False))
         chk("settings 已写入临时位置", settings.exists(), settings)
@@ -87,11 +90,17 @@ def worker():
         js("document.getElementById('b-paths').click()")
         chk("设置页入口可达", wait("document.getElementById('m-title').textContent","配置位置"))
         js(f"document.getElementById('path-home').value={json.dumps(str(new_home))};document.getElementById('path-home').dispatchEvent(new Event('input'));document.getElementById('path-follow').checked=false;document.getElementById('path-configs').value={json.dumps(str(new_lib))};document.getElementById('path-configs').dispatchEvent(new Event('input'))")
-        time.sleep(.6)
+        # 等到预览真的换成了新预设目录再点「应用位置」，避免异步预览还没落笔就提交
+        chk("预览更新为新的预设目录",
+            wait("(document.getElementById('path-preview').textContent||'').indexOf('custom-presets')>=0", True),
+            js("document.getElementById('path-preview').textContent"))
         js("document.querySelector('#m-foot button:last-child').click()")
         chk("热切换设置页后关闭", wait("document.getElementById('backdrop').classList.contains('on')",False))
         chk("无需重启即读取自定义预设目录", wait("(typeof STATE!=='undefined'&&STATE.lib)||''",str(new_lib.resolve())))
-        chk("切换后新预设可见", "new" in (js("[...document.querySelectorAll('.card')].map(x=>x.dataset.name)") or []))
+        # 卡片列表由 refresh → renderPresets 落笔，比 STATE.lib 晚一拍；固定时序会在忙时抢跑
+        chk("切换后新预设可见",
+            wait("[...document.querySelectorAll('.card')].map(x=>x.dataset.name).indexOf('new')>=0", True),
+            js("[...document.querySelectorAll('.card')].map(x=>x.dataset.name)"))
         chk("旧目录数据未搬移删除", (old_lib / "old.toml").exists())
         data=json.loads(settings.read_text(encoding="utf-8"))
         chk("settings 保存 schema/root/configs", data["schema_version"]==1 and Path(data["codex_home"])==new_home.resolve() and Path(data["configs_dir"])==new_lib.resolve(), data)
