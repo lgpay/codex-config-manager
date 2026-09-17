@@ -66,6 +66,17 @@ def wait(expr, want=True, timeout=12):
         time.sleep(.2)
     return False
 
+def open_paths():
+    """打开「配置位置」弹层。
+
+    产品在 BUSY（有操作执行中）时会忽略这次点击并提示「请稍候」——这是设计行为。
+    探针若不等界面空闲就点，负载高时会抢跑（表现为弹层打不开、后续断言连锁失败），
+    所以这里先等 BUSY 落下再点，并确认弹层真的开了。
+    """
+    wait("!BUSY", True, timeout=10)
+    js("document.getElementById('b-paths').click()")
+    return wait("document.getElementById('m-title').textContent", "配置位置")
+
 def worker():
     try:
         chk("界面状态已加载", wait("(typeof STATE!=='undefined'&&STATE)?1:0",1))
@@ -87,8 +98,7 @@ def worker():
         chk("settings 已写入临时位置", settings.exists(), settings)
         chk("首页已切到首次选择目录", wait("(typeof STATE!=='undefined'&&STATE.root)||''",str(old_home.resolve())))
         chk("自定义 settings 未写真实 LOCALAPPDATA", not (local / core.SETTINGS_APP_DIR / core.SETTINGS_FILE).exists())
-        js("document.getElementById('b-paths').click()")
-        chk("设置页入口可达", wait("document.getElementById('m-title').textContent","配置位置"))
+        chk("设置页入口可达", open_paths())
         js(f"document.getElementById('path-home').value={json.dumps(str(new_home))};document.getElementById('path-home').dispatchEvent(new Event('input'));document.getElementById('path-follow').checked=false;document.getElementById('path-configs').value={json.dumps(str(new_lib))};document.getElementById('path-configs').dispatchEvent(new Event('input'))")
         # 等到预览真的换成了新预设目录再点「应用位置」，避免异步预览还没落笔就提交
         chk("预览更新为新的预设目录",
@@ -105,13 +115,17 @@ def worker():
         data=json.loads(settings.read_text(encoding="utf-8"))
         chk("settings 保存 schema/root/configs", data["schema_version"]==1 and Path(data["codex_home"])==new_home.resolve() and Path(data["configs_dir"])==new_lib.resolve(), data)
         close_force = "clearFormState();MODAL_BACK=null;document.getElementById('backdrop').classList.remove('on')"
-        js("document.getElementById('b-paths').click()")
-        wait("document.getElementById('m-title').textContent","配置位置")
+        chk("设置页可重复打开", open_paths())
         api.path_context['env_controlled']=True
         js("closeModal(true)")
-        js("document.getElementById('b-paths').click()")
-        chk("CODEX_HOME 控制提示可见", wait("document.getElementById('m-title').textContent","配置位置") and "CODEX_HOME" in (js("document.getElementById('m-body').textContent") or ""))
-        chk("环境控制时应用按钮禁用", js("document.querySelector('#m-foot button:last-child').disabled") is True)
+        time.sleep(.2)
+        chk("环境控制时设置页可打开", open_paths())
+        chk("CODEX_HOME 控制提示可见",
+            wait("(document.getElementById('m-body').textContent||'').indexOf('CODEX_HOME')>=0", True),
+            js("document.getElementById('m-body').textContent"))
+        # 按钮的 disabled 由 path_info 返回后设置，同样是异步的 —— 轮询而非单次读取
+        chk("环境控制时应用按钮禁用",
+            wait("document.querySelector('#m-foot button:last-child').disabled", True))
         js(close_force)
         time.sleep(.3)
     except Exception as exc:
