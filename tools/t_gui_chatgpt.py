@@ -266,7 +266,8 @@ def worker():
         chk("状态读取出错时按钮仍可用（启动不依赖配置状态）",
             js("document.getElementById('b-chatgpt').disabled") is False)
         chk("状态读取出错时错误条仍在",
-            "读取配置状态出错" in (js("document.getElementById('status-banners').textContent") or ""))
+            "读取配置" in (js("document.getElementById('status-banners').textContent") or ""),
+            js("document.getElementById('status-banners').textContent"))
         js("STATE = _s; renderStatus();")
 
         # --- 布局不裁切 ---

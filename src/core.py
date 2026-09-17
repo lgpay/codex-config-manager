@@ -40,7 +40,7 @@ RESERVED_NAMES = {"state", "guard", "history", "live", "presets", "config"}
 TS_FMT = "%Y%m%d-%H%M%S"
 TS_FMT_HUMAN = "%Y-%m-%d %H:%M:%S"
 
-VERSION = "0.2.0"
+VERSION = "0.3.0"
 SETTINGS_SCHEMA_VERSION = 1
 SETTINGS_ENV = "CODEX_CONFIG_MANAGER_SETTINGS"
 SETTINGS_APP_DIR = "CodexConfigManager"
@@ -831,7 +831,7 @@ def read_preset_form(p: Paths, name: str) -> dict:
     if not current and p.live.exists():
         try:
             if read_text(p.live) == text:
-                is_current = True            # 无状态记录，但正在使用的就是它
+                is_current = True            # 当前配置未记录，但正在使用的就是它
         except OSError:
             pass
 
@@ -892,8 +892,8 @@ def run_edit(p: Paths, name: str, form: dict, *, force: bool = False,
              dry: bool = False, rep: Reporter | None = None) -> dict:
     """编辑预设的大模型相关配置。
 
-    与切换流程一致的取舍：若改的是「当前正在使用」的预设，会先同步正在使用的改动，
-    改完再同步写回 config.toml —— 否则下一次切换会把这次编辑冲掉。
+    与启用流程一致的取舍：若改的是「当前正在使用」的预设，会先同步正在使用的改动，
+    改完再同步写回 config.toml —— 否则下一次启用会把这次编辑冲掉。
     """
     rep = rep or Reporter()
     warn_codes: list[str] = []
@@ -942,7 +942,7 @@ def run_edit(p: Paths, name: str, form: dict, *, force: bool = False,
                         rep.info(line)
                     rep.info("")
                     rep.info("    请先完全退出（含托盘图标）再操作；")
-                    rep.info("    或先切换到别的预设，就能只改这个预设文件而不碰正在使用的。")
+                    rep.info("    或先启用别的预设，就能只改这个预设文件而不碰正在使用的。")
                     rep.info(f"    若确认无碍可强制；认为误伤可编辑：{p.guard}")
                     return {"ok": False, "blocked": True, "lines": rep.lines,
                             "warns": warn_codes}
@@ -1011,7 +1011,7 @@ def run_edit(p: Paths, name: str, form: dict, *, force: bool = False,
             else:
                 bl = backup_live(p)
                 copy_file(dst, p.live)
-                rep.info(f"      正在使用的 config.toml 已更新；切换前快照 -> {p.short(bl)}")
+                rep.info(f"      正在使用的 config.toml 已更新；启用前快照 -> {p.short(bl)}")
             if new_name != name and not dry:
                 write_state(p, new_name)
                 rep.info(f"      状态记录更新为 {new_name}")
@@ -1035,7 +1035,7 @@ def run_edit(p: Paths, name: str, form: dict, *, force: bool = False,
 # 默认配置，工具不替用户猜一个模型名。
 OFFICIAL_BLANK_TEXT = (
     "# Codex 官方配置（空白预设）\n"
-    "# 未写入任何设置；切换到它后，首次打开 Codex / ChatGPT 时会自动补齐官方默认配置。\n"
+    "# 未写入任何设置；启用它之后，首次打开 Codex / ChatGPT 时会自动补齐官方默认配置。\n"
 )
 
 
@@ -1106,7 +1106,7 @@ def run_save_form(p: Paths, name: str, form: dict, *, create_kind: str = "",
         if activate:
             switched = run_switch(p, target, rep=rep)
             if not switched["ok"]:
-                rep.warn("预设已保存，但尚未启用。请完全退出 Codex 后，选中该预设再点“切换到此预设”；无需重复新建。")
+                rep.warn("预设已保存，但尚未启用。请完全退出 Codex 后，选中该预设再点右侧边栏的「启用配置」；无需重复新建。")
             return dict(switched, saved=True, activated=bool(switched["ok"]), new_name=target)
         return dict(res, saved=True, activated=False)
     except (CoreError, OSError, ValueError):
@@ -1119,7 +1119,7 @@ def run_save_form(p: Paths, name: str, form: dict, *, create_kind: str = "",
 # --------------------------------------------------------------------------
 
 def read_state(p: Paths) -> tuple[str | None, str | None]:
-    """返回 (当前预设名, 上次切换时间)。缺失或损坏 → (None, None)，不抛异常。"""
+    """返回 (当前预设名, 上次启用时间)。缺失或损坏 → (None, None)，不抛异常。"""
     try:
         text = read_text(p.state)
     except OSError:
@@ -1137,7 +1137,7 @@ def read_state(p: Paths) -> tuple[str | None, str | None]:
         elif k in ("switched_at", "switched", "time"):
             switched = v or None
     if preset and not PRESET_NAME_RE.match(preset):
-        return None, switched          # 损坏 → 按无状态处理
+        return None, switched          # 损坏 → 按「当前配置未记录」处理
     return preset, switched
 
 
@@ -1440,7 +1440,7 @@ def diff_rows(old_text: str, new_text: str, context: int = 3) -> tuple[int, list
 
 
 # --------------------------------------------------------------------------
-# 备份 / 同步 / 切换
+# 备份 / 同步 / 启用
 # --------------------------------------------------------------------------
 
 def _probe_writable(p: Paths) -> None:
@@ -1699,7 +1699,7 @@ def run_delete_preset(p: Paths, name: str, rep: Reporter | None = None) -> dict:
     try:
         name = validate_preset_name(name)
         if preset_is_current(p, name):
-            raise CoreError("当前正在使用的配置不能删除。请先切换到其他配置。")
+            raise CoreError("当前正在使用的配置不能删除。请先启用其他配置。")
         target = preset_path(p, name)
         if not target.exists():
             raise CoreError(f"找不到预设「{name}」。")
@@ -1766,7 +1766,7 @@ def host_running_now(p: Paths) -> dict:
     因此可以安全地按秒级频率轮询。
 
     为什么需要它：`snapshot()` 里的 `guard.running` 只在界面渲染那一刻算一次，
-    用户退出 Codex / ChatGPT 之后不会自动更新，「切换」按钮就会一直灰着。
+    用户退出 Codex / ChatGPT 之后不会自动更新，「启用配置」按钮就会一直灰着。
     界面改为轮询本函数来实时反映「宿主已退出」。
 
     任何异常都退化为「未在运行」：宁可让用户点一下再被真正拦截，
@@ -1801,7 +1801,7 @@ def snapshot(p: Paths) -> dict:
         changed = False
         changed_lines = 0
 
-    # 无状态时：正在使用的是否等于某个预设
+    # 当前配置未记录时：正在使用的是否等于某个预设
     guessed = None
     if not current and p.live.exists():
         lt = read_text(p.live)
@@ -1825,6 +1825,16 @@ def snapshot(p: Paths) -> dict:
         "count": len(_cg_procs),
     }
 
+    # hero 要显示「当前预设的模型 / 供应商」，这里直接给出那条预设记录的摘要。
+    # current_missing 时不给 —— 预设已经不存在了，再显示它的模型是误导。
+    current_preset = None
+    if current and not current_missing:
+        for x in presets:
+            if x["name"] == current:
+                current_preset = {"name": x["name"], "model": x.get("model"),
+                                  "provider": x.get("provider")}
+                break
+
     return {
         "version": VERSION,
         "root": str(p.root),
@@ -1834,6 +1844,7 @@ def snapshot(p: Paths) -> dict:
         "live_exists": p.live.exists(),
         "current": current,
         "current_missing": current_missing,
+        "current_preset": current_preset,
         "switched_at": switched_at,
         "switched_at_human": human_time(switched_at),
         "changed": changed,
@@ -1869,7 +1880,7 @@ def format_hits(hits: list[dict]) -> list[str]:
 def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
                force: bool = False, dry: bool = False,
                rep: Reporter | None = None) -> dict:
-    """固定五步流程（§6.7）：检测 → 读状态 → 同步 → 切换 → 写状态。"""
+    """固定五步流程（§6.7）：检测 → 读状态 → 同步 → 启用 → 写状态。"""
     rep = rep or Reporter()
     warn_codes: list[str] = []
 
@@ -1888,7 +1899,7 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
                 rep.step(head + f"检测到 {len(hits)} 个进程（演练模式不拦截）")
             elif force:
                 rep.step(head + f"检测到 {len(hits)} 个进程（已强制跳过）")
-                rep.warn("    宿主应用正在运行，此刻同步可能拿到半成品，切换也可能被覆盖回去。")
+                rep.warn("    宿主应用正在运行，此刻同步可能拿到半成品，启用也可能被覆盖回去。")
             else:
                 rep.step(head + f"检测到 {len(hits)} 个进程  ×")
                 rep.err("[!] 检测到宿主应用正在运行，已中止：")
@@ -1898,7 +1909,7 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
                 rep.info("")
                 rep.info("    运行中的宿主应用会持续改写 config.toml：")
                 rep.info("      · 此刻同步会拿到半成品")
-                rep.info("      · 切换也会马上被覆盖回去")
+                rep.info("      · 启用也会马上被覆盖回去")
                 rep.info("")
                 rep.info("    请先完全退出（含托盘图标）再操作。")
                 rep.info("    确认无碍可强制；若认为误伤，可编辑：")
@@ -1914,11 +1925,12 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
         # ---- 2 读取状态 ----
         current, _ = read_state(p)
         if current and not preset_path(p, current).exists():
-            rep.warn(f"[!] 状态记录指向的预设「{current}」已不存在，按无状态处理。")
+            rep.warn(f"[!] 状态记录指向的预设「{current}」已被删除，将按「未记录当前配置」继续。")
+            rep.info("    正在使用的配置仍会照常备份；同步与启用不再往回写这个已消失的预设。")
             warn_codes.append("state-preset-missing")
             current = None
         rep.step("[2/5] 读取状态 ...... "
-                 + (f"当前预设 = {current}" if current else "无状态记录"))
+                 + (f"当前配置 = {current}" if current else "当前配置未记录"))
 
         # ---- 写前预备：历史目录必须可写 ----
         if not dry:
@@ -1932,7 +1944,7 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
         elif not p.live.exists():
             rep.info("      正在使用的配置不存在，无需同步")
         elif not current:
-            rep.warn("[!] 未找到「当前预设」记录，正在使用的配置中的改动不会并入任何预设。")
+            rep.warn("[!] 没有「当前配置」记录，正在使用的配置中的改动不会并入任何预设。")
             rep.info("    可执行「另存为新预设」把它固化为一个新预设。")
             warn_codes.append("no-state")
             if not dry:
@@ -1956,12 +1968,12 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
                     rep.info(f"      同步前版本 -> {p.short(b)}")
                 harvest_done = True
 
-        # ---- 4 切换 ----
-        rep.step(f"[4/5] 切换 {current or '(无)'} -> {target}")
+        # ---- 4 启用 ----
+        rep.step(f"[4/5] 启用 {current or '(无)'} -> {target}")
         if dry:
             ts = now_ts()
             rep.info(f"      （演练）正在使用的配置将被 {target}.toml 覆盖")
-            rep.info(f"      （演练）切换前快照 -> "
+            rep.info(f"      （演练）启用前快照 -> "
                      f"{p.short(p.hist_live / ('config.toml.' + ts))}")
         else:
             if p.live.exists():
@@ -1970,7 +1982,7 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
                 b = None
             copy_file(tfile, p.live)
             if b:
-                rep.info(f"      正在使用的配置已替换；切换前快照 -> {p.short(b)}")
+                rep.info(f"      正在使用的配置已替换；启用前快照 -> {p.short(b)}")
             else:
                 rep.info("      正在使用的配置已创建（原先不存在）")
 
@@ -1997,7 +2009,7 @@ def run_switch(p: Paths, target: str, *, no_harvest: bool = False,
 
 def run_harvest_only(p: Paths, *, force: bool = False, dry: bool = False,
                      rep: Reporter | None = None) -> dict:
-    """只同步、不切换（FR-3.5）。正在使用的配置与状态均不变。"""
+    """只同步、不启用（FR-3.5）。正在使用的配置与状态均不变。"""
     rep = rep or Reporter()
     try:
         pats, src = guard_list(p)

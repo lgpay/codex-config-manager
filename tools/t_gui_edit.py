@@ -120,12 +120,33 @@ def worker():
         chk("界面就绪（STATE 已加载）", wait_ready(), "STATE 未就绪")
         time.sleep(0.4)
 
-        print("== 入口 ==")
-        chk("有「编辑配置…」按钮", js("!!document.getElementById('b-edit')"))
+        print("== 入口（IMP-031：编辑改由卡片右键 / 双击进入）==")
+        # 断言迁移：顶栏 b-edit 已被有意删除，编辑器改由右键菜单「编辑」或双击卡片打开，
+        # 两者最终都走同一个 openEditor()。这里锁「入口确实换成右键菜单了」。
+        chk("顶栏已无 b-edit 按钮（收进右键菜单）",
+            not js("!!document.getElementById('b-edit')"))
+        chk("右键菜单里有「编辑」项",
+            js("""(function(){
+                  SELECTED='example'; renderPresets(); openCtx('example', 10, 10);
+                  var ok=[...document.querySelectorAll('#ctxmenu button.mi')]
+                         .some(x=>x.textContent.trim()==='编辑');
+                  closeCtx(); return ok; })()"""))
         chk("预设已选中", js("SELECTED") == "example", js("SELECTED"))
-        chk("按钮已启用", js("!document.getElementById('b-edit').disabled"))
+        # 右键菜单「编辑」在当前选中且非忙时应可用
+        chk("右键菜单「编辑」项可用",
+            js("""(function(){
+                  SELECTED='example'; renderPresets(); openCtx('example', 10, 10);
+                  var b=[...document.querySelectorAll('#ctxmenu button.mi')]
+                        .find(x=>x.textContent.trim()==='编辑');
+                  var d=b?!b.disabled:null; closeCtx(); return d; })()""") is True)
         chk("卡片带 title 提示", "双击" in (js("document.querySelector('.card').title") or ""))
-        chk("卡片显示 url", "example.eu.org" in (js("document.querySelector('.card').textContent") or ""),
+        # IMP-033：卡片只留「模型 / 供应商」两列，不再显示 url / key。
+        # 断言迁移：原来锁「卡片显示 url」，现在锁「卡片确实不显示 url（挪去别处了）」。
+        chk("卡片不再显示 url（IMP-033 精简）",
+            "example.eu.org" not in (js("document.querySelector('.card').textContent") or ""),
+            js("document.querySelector('.card').textContent"))
+        chk("卡片仍显示模型与供应商",
+            all(k in (js("document.querySelector('.card').textContent") or "") for k in ["模型", "供应商"]),
             js("document.querySelector('.card').textContent"))
         chk("JS 无异常（renderStatus 可用）", js("document.getElementById('status').children.length") > 0)
 
@@ -251,7 +272,12 @@ def worker():
 
         print("== 保存（走完整 run_edit 链路） ==")
         btns = js("[...document.querySelectorAll('#m-foot button')].map(b=>b.textContent)")
-        chk("底部按钮为 取消/保存", btns == ["取消", "保存并启用…", "保存"], btns)
+        # IMP-038：按钮文案去掉末尾省略号（「保存并启用…」→「保存并启用」）。
+        # 断言迁移：锁新文案，且顺带锁「三个按钮都不带 …」。
+        chk("底部按钮为 取消/保存并启用/保存",
+            btns == ["取消", "保存并启用", "保存"], btns)
+        chk("底部按钮文字都不带省略号",
+            all("…" not in b for b in btns), btns)
         js("document.querySelector('#m-foot button:last-child').click();")
         t0 = time.time()
         while time.time() - t0 < 12:
@@ -290,8 +316,9 @@ def worker():
         chk("URL 回显为新值", js("document.getElementById('e-url').value") == "https://sync.example/v2",
             js("document.getElementById('e-url').value"))
         chk("model 回显为新值", js("document.getElementById('e-model').value") == "gpt-5.9-probe")
-        chk("卡片已刷新 url",
-            "sync.example" in (js("document.querySelector('.card').textContent") or ""),
+        # IMP-033：卡片不再显示 url，改为断言「模型已刷新成新值」——同样能证明列表跟着重绘了。
+        chk("卡片已刷新 model",
+            "gpt-5.9-probe" in (js("document.querySelector('.card').textContent") or ""),
             js("document.querySelector('.card').textContent"))
         # Escape 关闭
         js("document.dispatchEvent(new KeyboardEvent('keydown', {key:'Escape'}));")

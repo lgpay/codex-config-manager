@@ -1,16 +1,22 @@
 # -*- coding: utf-8 -*-
 """图形界面资源：HTML / CSS / JS 全部内联，避免打包后资源路径失效。
 
-UI 重做（2026-09-17，IMP-021 ~ IMP-024）：
-  * 顶栏新增「配置 / 工具 / 帮助」三个下拉菜单，收纳原右侧「操作」栏的全部低频功能；
-  * 预设卡片支持右键菜单（切换 / 编辑 / 差异 / 复制 / 另存 / 删除）；
-  * 常驻动作只剩两个按钮：列表标题行右侧的「切换」、状态条右侧的「启动 ChatGPT」；
-  * 运行状态不再单独占 pill ——「Codex 正在运行不能切换」并入切换按钮提示，
-    ChatGPT「已打开 / 后台驻留 / 未运行」并入启动按钮提示；
-  * 状态条只保留必须显眼的横幅（未同步变化 / 状态记录失效 / 状态读取失败）。
+界面结构（2026-09-17，IMP-021 ~ IMP-036 重做后）：
+  * 顶栏：三个直按钮「新建」「设置」与两个下拉「工具」「帮助」+ 右侧版本号。
+    不放图标和标题 —— 窗口标题栏已经写了程序名，再写一遍是重复。
+    「新建」「设置」都不做下拉：高频且只有一层内容，多一层下拉就多一次点击。
+    菜单项文字末尾**不加省略号** —— 省略号在这里不传达任何额外信息，只是噪音。
+  * hero（当前配置）：两行排版 —— 「当前配置：<名>」/「模型 X  供应商 X  应用时间 X」。
+  * 主体：左侧预设列表 + 右侧操作边栏（「启用配置」「启动 ChatGPT」+ ChatGPT 状态行）。
+  * 状态条：只在有横幅时出现，承载四句必须显眼的提示。
+  * 预设卡片的单条操作（编辑 / 对比 / 复制 / 另存为 / 删除）全部收进右键菜单，
+    顶栏不再重复一份 —— 同一件事只留一个入口。
 
-功能只实现一份：菜单、右键与按钮共用同一组具名函数（doSwitch / doDiff / doCopy /
-doDelete / doSaveNew / doHarvest …），原按钮 id 全部保留，避免逻辑分叉。
+术语统一：全程序一律用「启用」（不再用「切换」）；按钮固定文案「启用配置」，
+不拼预设名。CLI 子命令名 `use` 不变，只改输出文字。
+
+功能只实现一份：菜单、右键与按钮共用同一组具名函数（doNew / doSwitch / doDiff /
+doCopy / doDelete / doSaveNew / doHarvest …），避免逻辑分叉。
 宿主进程保护、覆盖配置确认、第三方连接测试的 TLS / 不跟随跳转 / 超时 / 费用确认
 等安全逻辑与文案保持不变，未弱化任何安全断言。
 """
@@ -53,22 +59,20 @@ body{
 }
 .app{height:100vh;display:grid;grid-template-rows:auto auto minmax(120px,1fr) auto minmax(86px,108px);gap:0}
 
-/* ---------- 顶栏 + 菜单栏 ---------- */
+/* ---------- 顶栏 + 菜单栏 ----------
+   顶栏不放图标和标题 —— 窗口标题栏已经写了「Codex 配置管理器」，再写一遍是重复。
+   工具栏：直按钮「新建」「设置」，下拉「工具」「帮助」，右侧版本号。
+   直按钮不做下拉：只有一层内容，多一层下拉就多一次点击。 */
 .topbar{
-  display:flex;align-items:center;gap:10px;padding:6px 16px;
+  display:flex;align-items:center;gap:6px;padding:6px 16px;
   background:var(--panel);border-bottom:1px solid var(--line);
   position:relative;z-index:30;
 }
-.topbar .logo{
-  width:26px;height:26px;border-radius:7px;overflow:hidden;
-  display:flex;align-items:center;justify-content:center;flex:0 0 auto;
-}
-.topbar .logo img{width:100%;height:100%;display:block;object-fit:cover}
-.topbar h1{font-size:13.5px;font-weight:650;margin:0;letter-spacing:.2px;white-space:nowrap}
 .topbar .ver{margin-left:auto;color:var(--fg-3);font-size:11.5px;font-variant-numeric:tabular-nums}
 
-/* 菜单栏：配置 / 工具 / 帮助 三个下拉，收纳原「操作」栏的低频功能 */
-.menubar{display:flex;align-items:center;gap:2px;margin-left:8px;min-width:0}
+/* 菜单栏：新建 / 工具 / 设置 / 帮助。只有工具与帮助是下拉，收纳低频功能。
+   菜单项文字一律不带省略号 —— 带省略号的项没几个真会再弹一层，只是噪音。 */
+.menubar{display:flex;align-items:center;gap:2px;min-width:0}
 .mgroup{position:relative}
 .mtitle{
   font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:7px;
@@ -92,6 +96,16 @@ body{
 .mi.danger:hover:not(:disabled){background:var(--danger-soft)}
 .msep{height:1px;background:var(--line);margin:4px 6px}
 
+/* 直按钮「新建」「设置」：视觉上与菜单标题同级，但它们是动作不是菜单。
+   与相邻下拉之间留 4px —— 不加分隔线，靠间距就能读出「这是动作、那是菜单」。 */
+.mact{
+  font-size:12.5px;font-weight:600;padding:4px 10px;border-radius:7px;
+  background:transparent;border:1px solid transparent;color:var(--fg-2);
+  display:inline-flex;align-items:center;
+}
+.mact + .mgroup,.mgroup + .mact{margin-left:4px}
+.mact:hover:not(:disabled){background:var(--panel-2);color:var(--fg)}
+
 /* ---------- 右键菜单（预设卡片） ---------- */
 .ctxmenu{
   position:fixed;left:0;top:0;z-index:70;min-width:198px;padding:5px;border-radius:10px;
@@ -104,7 +118,12 @@ body{
 /* 包住按钮的壳：按钮 disabled 时由外壳承担 title 提示（原生 tooltip 在禁用控件上不可靠） */
 .bwrap{display:inline-flex;align-items:center}
 
-/* ---------- 当前配置 hero（首页主区） ---------- */
+/* ---------- 当前配置 hero（首页主区） ----------
+   两行排版：
+     第一行  「当前配置：<预设名>」+ 状态标签
+     第二行  「模型 X  供应商 X  应用时间 X」
+   这是全程序唯一说明「我正在用哪个配置」的地方，所以它报的是最全的一组值；
+   下面卡片里的模型 / 供应商是每个预设各自的值，两者含义不同。 */
 .hero{
   background:linear-gradient(180deg,var(--panel) 0%,var(--panel-2) 100%);
   border-bottom:1px solid var(--line);
@@ -113,25 +132,22 @@ body{
 .hero.dirty{background:linear-gradient(180deg,var(--warn-soft),var(--panel-2));
   border-bottom-color:rgba(183,121,31,.3)}
 .hero .hcard{flex:1;min-width:0;display:flex;flex-direction:column;gap:5px}
-.hero .ht{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
+.hero .hline1{display:flex;align-items:center;gap:9px;flex-wrap:wrap}
 .hero .hname{font-size:16px;font-weight:700;letter-spacing:.2px}
 .hero .htag{font-size:10.5px;padding:1px 8px;border-radius:999px;font-weight:600;white-space:nowrap;
   background:var(--accent-soft);color:var(--ok)}
 .hero .htag.mute{background:var(--panel-2);color:var(--fg-3);border:1px solid var(--line)}
-.hero .hmeta{display:flex;gap:14px;flex-wrap:wrap;font-family:var(--mono);
-  font-size:11.5px;color:var(--fg-2)}
-.hero .hmeta span.k{color:var(--fg-3)}
-.hero .hguide{font-size:11.5px;color:var(--fg-3);line-height:1.6}
-.hero .hguide b{color:var(--fg-2);font-weight:650}
+.hero .hmeta{display:flex;gap:14px;flex-wrap:wrap;font-size:11.5px;color:var(--fg-2)}
+.hero .hmeta span.k{color:var(--fg-3);margin-right:4px}
+.hero .hmeta b{color:var(--fg-2);font-weight:650}
 .hero .hacts{display:flex;flex-direction:column;gap:6px;flex:0 0 auto}
 .hero .hacts button{justify-content:center;min-width:132px}
 .hero.empty .hname{color:var(--fg-2);font-weight:650;font-size:14px}
-.hero.empty .hguide{color:var(--fg-2)}
 .hero .mute{background:var(--panel-2);color:var(--fg-3);border:1px solid var(--line)}
 
 /* ---------- 紧凑状态条（只放「必须显眼」的横幅；没有横幅时整条折叠） ----------
-   运行状态不再单独占位置：宿主「运行中 / 未运行」并入边栏「切换」按钮提示，
-   ChatGPT「已打开 / 后台驻留 / 未运行」并入边栏「启动 ChatGPT」按钮提示
+   运行状态不再单独占位置：宿主「运行中 / 未运行」并入边栏「启用配置」按钮提示，
+   ChatGPT「运行中 / 后台驻留 / 未启动」放在边栏底部的状态行
    （见 renderSwitchButton / renderChatGPTButton）。 */
 .status{display:none;background:var(--panel);border-bottom:1px solid var(--line);padding:7px 16px 8px}
 .status.on{display:block}
@@ -161,22 +177,28 @@ body{
 .link{color:inherit;text-decoration:underline;cursor:pointer;opacity:.85}
 
 /* ---------- 主体：左侧预设列表 + 右侧操作边栏 ----------
-   常驻动作只剩两个按钮，都放在预设列表**右侧的边栏**里 ——「切换」与
+   常驻动作只剩两个按钮，都放在预设列表**右侧的边栏**里 ——「启用配置」与
    「启动 ChatGPT」。其余功能进顶部菜单栏与卡片右键菜单。 */
 .body{display:grid;grid-template-columns:minmax(0,1fr) 164px;gap:12px;padding:10px 16px;min-height:0}
-.colhead{display:flex;align-items:center;gap:10px;flex:0 0 auto}
-.col-title{font-size:11.5px;color:var(--fg-3);font-weight:650;letter-spacing:.4px;
-  margin:0 0 7px 2px;text-transform:uppercase}
-.colhead .col-title{margin:0}
-/* 右侧操作边栏：两个常驻按钮（切换 / 启动 ChatGPT），固定宽度、不随列表伸缩 */
+/* 右侧操作边栏：两个常驻按钮（启用配置 / 启动 ChatGPT），固定宽度、不随列表伸缩。
+   ChatGPT 的运行状态单独占边栏底部一行（.cgstate），带颜色 —— 一眼能看到，
+   不必去 hover 按钮读 tooltip。两个按钮之间不插状态行，避免把按钮位置顶下去。 */
 .sidebar{display:flex;flex-direction:column;gap:8px;min-width:0;min-height:0}
-.sidebar .col-title{margin:0 0 0 2px}
 .sidebar .bwrap{display:block;width:100%}
 .sidebar button{
   width:100%;justify-content:center;text-align:center;white-space:normal;
   padding:8px 10px;line-height:1.35;min-height:36px;
 }
 #b-chatgpt{background:var(--panel-2)}
+/* ChatGPT 运行状态：贴边栏底部、单独一行、带状态色 */
+.cgstate{
+  margin-top:auto;padding:6px 2px 0;text-align:center;
+  font-size:11.5px;line-height:1.4;color:var(--fg-3);
+  border-top:1px dashed var(--line);
+}
+.cgstate b{font-weight:650}
+.cgstate.ok{color:var(--ok)}
+.cgstate.warn{color:var(--warn)}
 .presets{min-height:0;display:flex;flex-direction:column;flex:1}
 .plist{overflow-y:auto;display:flex;flex-direction:column;gap:8px;padding:2px 4px 4px 2px;min-height:0;flex:1}
 .plist::-webkit-scrollbar{width:9px}
@@ -291,13 +313,20 @@ select{
   outline:none;cursor:pointer;
 }
 select:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,var(--accent) 18%,transparent)}
+/* 标签在上、控件占满整行的写法：用于内容需要整行宽度的弹层
+   （设置里的长路径、复制 / 历史恢复里的长下拉）。字段多而标签短的表单请用 .fgrid + .fl/.fi。 */
 .fieldlbl{font-size:11.5px;color:var(--fg-3);margin:10px 0 5px}
 .errmsg{color:var(--danger);font-size:12px;min-height:18px;margin-top:6px}
 
 /* ---------- 配置编辑表单 ---------- */
+/* ---------- 配置编辑表单（左标签 + 右控件，两列网格） ----------
+   ★ 这套 .fl + .fi 是「字段多、标签短」场景的统一写法：编辑器与新建向导都用它。
+     另一套 .fieldlbl 是「标签在上、控件占满整行」的场景（设置 / 复制 / 历史恢复），
+     那几处的内容是长路径或长下拉，需要整行宽度。
+     **一个弹层内部只能用其中一套** —— 混用会出现两种缩进与两种行距。 */
 .fgrid{display:grid;grid-template-columns:106px minmax(0,1fr);gap:8px 12px;align-items:center;margin:2px 0 0;min-width:0}
 .fgrid .fl{font-size:12px;color:var(--fg-2);text-align:right;line-height:1.4;word-break:break-all;min-width:0}
-.fgrid .fi,.fgrid>div,.fgrid>input,.fgrid>select,#w-third,#w-third>div{min-width:0}
+.fgrid .fi,.fgrid>div,.fgrid>input,.fgrid>select{min-width:0}
 .fsec{grid-column:1/-1;margin:14px 0 0;padding-top:11px;border-top:1px solid var(--line);
   font-size:11.5px;color:var(--fg-3);font-weight:650;letter-spacing:.3px;
   display:flex;align-items:center;gap:8px;flex-wrap:wrap}
@@ -359,32 +388,17 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,v
 <body>
 <div class="app">
   <header class="topbar">
-    <div class="logo"><img src="codex-icon.png" alt=""></div>
-    <h1>Codex 配置管理器</h1>
     <nav class="menubar" id="menubar">
-      <div class="mgroup">
-        <button class="mtitle" id="m-config" aria-haspopup="menu" aria-expanded="false">配置</button>
-        <div class="mpanel" role="menu" aria-labelledby="m-config">
-          <button class="mi" id="b-new" role="menuitem">新建配置向导…</button>
-          <button class="mi" id="b-edit" role="menuitem" disabled>编辑所选配置…</button>
-          <button class="mi" id="b-save" role="menuitem">另存为新预设…</button>
-          <div class="msep"></div>
-          <button class="mi" id="b-copy" role="menuitem" disabled>复制所选配置…</button>
-          <button class="mi danger" id="b-delete" role="menuitem" disabled>删除所选配置…</button>
-        </div>
-      </div>
+      <button class="mact" id="b-new">新建</button>
       <div class="mgroup">
         <button class="mtitle" id="m-tools" aria-haspopup="menu" aria-expanded="false">工具</button>
         <div class="mpanel" role="menu" aria-labelledby="m-tools">
-          <button class="mi" id="b-harvest" role="menuitem">只同步当前预设</button>
-          <button class="mi" id="b-diff" role="menuitem" disabled>查看差异</button>
-          <button class="mi" id="b-history" role="menuitem">从历史版本恢复…</button>
-          <div class="msep"></div>
-          <button class="mi" id="b-guard" role="menuitem">诊断宿主进程</button>
-          <button class="mi" id="b-dry" role="menuitem" disabled>演练（不写入）</button>
-          <button class="mi" id="b-paths" role="menuitem">配置位置…</button>
+          <button class="mi" id="b-harvest" role="menuitem">同步预设</button>
+          <button class="mi" id="b-history" role="menuitem">历史恢复</button>
+          <button class="mi" id="b-guard" role="menuitem">进程诊断</button>
         </div>
       </div>
+      <button class="mact" id="b-paths">设置</button>
       <div class="mgroup">
         <button class="mtitle" id="m-help" aria-haspopup="menu" aria-expanded="false">帮助</button>
         <div class="mpanel" role="menu" aria-labelledby="m-help">
@@ -402,19 +416,16 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,v
 
   <main class="body">
     <div class="presets">
-      <div class="colhead">
-        <div class="col-title">预设</div>
-      </div>
       <div class="plist" id="plist"></div>
     </div>
     <aside class="sidebar" id="sidebar">
-      <div class="col-title">操作</div>
       <span class="bwrap" id="switch-wrap" title="请先在左侧选择一个预设">
-        <button class="primary" id="b-switch" disabled>切换到此预设</button>
+        <button class="primary" id="b-switch" disabled>启用配置</button>
       </span>
       <span class="bwrap" id="chatgpt-wrap" title="启动本机 ChatGPT 桌面应用">
         <button id="b-chatgpt" title="启动本机 ChatGPT 桌面应用">启动 ChatGPT</button>
       </span>
+      <div class="cgstate" id="st-chatgpt"></div>
     </aside>
   </main>
 
@@ -428,7 +439,7 @@ select:focus{border-color:var(--accent);box-shadow:0 0 0 2px color-mix(in srgb,v
       <div class="s" id="jobstat"></div>
       <div class="spin" id="spin"></div>
     </div>
-    <div class="log" id="log"><span class="l hintline">就绪。先在左侧选中一个预设，再点右侧边栏的「切换」。</span></div>
+    <div class="log" id="log"><span class="l hintline">就绪。先在左侧选中一个预设，再点右侧边栏的「启用配置」。</span></div>
   </section>
 </div>
 
@@ -478,21 +489,25 @@ function renderStatus(){
   const s = STATE;
   const banners = [];
   if (s.error){
-    setBanners(`<div class="banner bad"><span class="ico">!</span><span class="txt">读取配置状态出错：${esc(s.error)}。本程序不会修改任何配置；请检查配置目录权限后重新打开。</span></div>`);
+    setBanners(`<div class="banner bad"><span class="ico">!</span><span class="txt">读取配置：${esc(s.error)} 时出错。请检查配置目录权限后重新打开。</span></div>`);
     $("ver").textContent = "v" + s.version;
     renderSwitchButton(); renderChatGPTButton();
     return;
   }
   /* 运行状态不再单独占 pill：
-       ·「宿主是否在运行」→ 切换按钮提示（renderSwitchButton）
-       ·「ChatGPT 已打开 / 后台驻留 / 未运行」→ 启动按钮提示（renderChatGPTButton）
-     状态条只保留「必须显眼」的横幅。 */
+       ·「宿主是否在运行」→ 启用按钮提示（renderSwitchButton）
+       ·「ChatGPT 运行中 / 后台驻留 / 未启动」→ 边栏底部状态行（renderChatGPTButton）
+     状态条只保留「必须显眼」的四句横幅，每句都写清「发生了什么 + 会怎样 / 怎么办」：
+       (a) 当前配置已更新，启用前将自动同步至 <预设>。
+       (b) 预设「<名>」已被删除，启用其他配置后预设中消失，仅备份。
+       (c) 当前配置与预设 <名> 一致。
+       (d) 读取配置：<路径> 时出错。请检查配置目录权限后重新打开。 */
   if (s.current_missing){
-    banners.push(`<div class="banner warn"><span class="ico">!</span><span class="txt">状态记录指向的预设「${esc(s.current)}」已不存在，将按「无状态」处理。</span></div>`);
+    banners.push(`<div class="banner warn"><span class="ico">!</span><span class="txt">预设「${esc(s.current)}」已被删除，启用其他配置后预设中消失，仅备份。</span></div>`);
   } else if (s.current && s.changed){
-    banners.push(`<div class="banner warn"><span class="ico">!</span><span class="txt">正在使用的配置有未同步的变化（约 ${s.changed_lines} 行），切换前会自动同步回 <b>${esc(s.current)}</b>。</span></div>`);
+    banners.push(`<div class="banner warn"><span class="ico">!</span><span class="txt">当前配置已更新，启用前将自动同步至 <b>${esc(s.current)}</b>。</span></div>`);
   } else if (!s.current && s.live_exists && s.presets.length){
-    banners.push(`<div class="banner info"><span class="ico">i</span><span class="txt">${s.guessed ? `正在使用的配置与预设 <b>${esc(s.guessed)}</b> 一致。在左侧选中它后点边栏的「切换」即可把它记为当前预设（内容一致，不会产生改动）。` : `正在使用的配置与预设库中任何预设都不同，可用「配置 › 另存为新预设…」固化当前配置。`}</span></div>`);
+    banners.push(`<div class="banner info"><span class="ico">i</span><span class="txt">${s.guessed ? `当前配置与预设 <b>${esc(s.guessed)}</b> 一致。` : `当前配置不属于任何预设。`}</span></div>`);
   }
   setBanners(banners.join(""));
   $("ver").textContent = "v" + s.version;
@@ -508,7 +523,17 @@ function setTip(btnId, wrapId, tip){
 }
 function busyTip(){ return "有操作正在执行，请稍候。"; }
 
-/* ---------- 「切换」按钮：把「Codex 运行时不能切换」做成按钮提示 ---------- */
+/* ChatGPT 运行状态行：边栏底部单独一行、带状态色。
+   传 null/空 则清空（不显示任何文字）。 */
+function setCGState(html, cls){
+  const el = $("st-chatgpt"); if (!el) return;
+  el.className = "cgstate" + (cls ? " " + cls : "");
+  el.innerHTML = html || "";
+}
+
+/* ---------- 「启用配置」按钮：把「Codex 运行时不能启用」做成按钮提示 ----------
+   按钮文案固定为「启用配置」，不再拼预设名 —— 名字在 hero 和左侧卡片上都有，
+   按钮上再写一遍只会随选中项跳动，反而看不清哪个是哪个。 */
 function renderSwitchButton(){
   const el = $("b-switch");
   if (!el) return;
@@ -516,13 +541,13 @@ function renderSwitchButton(){
   const hasSel = !!SELECTED;
   const running = !!g.running;
   el.disabled = !!BUSY || running || !hasSel;
-  el.textContent = hasSel ? `切换到 ${SELECTED}` : "切换到此预设";
+  el.textContent = "启用配置";
   let tip;
   if (BUSY) tip = busyTip();
   else if (!hasSel) tip = "请先在左侧选择一个预设。";
-  else if (running) tip = "Codex 正在运行，不能切换。请完全退出 Codex / ChatGPT 桌面应用（含托盘）后再试。";
-  else if (SELECTED === STATE.current) tip = `${SELECTED} 正在使用中；切换会重新应用这个预设（内容一致时不会产生变化）。`;
-  else tip = `把正在使用的配置切换到 ${SELECTED}。切换前会自动备份到 configs\\.history\\，可随时回退。`;
+  else if (running) tip = "Codex 正在运行，不能启用。请完全退出 Codex / ChatGPT 桌面应用（含托盘）后再试。";
+  else if (SELECTED === STATE.current) tip = `当前已启用 ${SELECTED}；再次启用会重新应用这个预设（内容一致时不会产生变化）。`;
+  else tip = `启用 ${SELECTED}。启用前会自动备份到 configs\\.history\\，可随时回退。`;
   setTip("b-switch", "switch-wrap", tip);
 }
 
@@ -543,6 +568,10 @@ function renderChatGPTButton(){
   else if (cg.running) tip = "运行状态：ChatGPT 后台驻留（窗口已关闭）。点此把它唤到前台。";
   else tip = "运行状态：ChatGPT 未运行。点此启动本机 ChatGPT 桌面应用。";
   setTip("b-chatgpt", "chatgpt-wrap", tip);
+  // 状态行：区分「运行中 / 后台驻留 / 未启动」三种，与 tooltip 同一套判据。
+  if (opened) setCGState("ChatGPT <b>运行中</b>", "ok");
+  else if (cg.running) setCGState("ChatGPT <b>后台驻留</b>", "warn");
+  else setCGState("ChatGPT 未启动");
 }
 
 const CG_POLL_MS = 4000;
@@ -550,7 +579,7 @@ let CG_POLL = null;
 function cgSame(a, b){
   return !!a && !!b && a.windowed === b.windowed && a.running === b.running;
 }
-/* 轮询「宿主是否在运行」—— 修复「已退出 Codex，切换按钮仍灰着」。
+/* 轮询「宿主是否在运行」—— 修复「已退出 Codex，启用按钮仍灰着」。
    原先只有 ChatGPT 的状态在轮询，宿主运行状态（guard.running）只在界面渲染那一刻
    算一次，退出后不会更新。这里同时刷新两者，且只在真的变化时才重绘。 */
 async function pollRuntime(){
@@ -605,42 +634,44 @@ function renderHero(){
   if (s.error){
     box.className = "hero empty";
     box.innerHTML = `<div class="hcard">
-      <div class="ht"><span class="hname">配置状态读取失败</span></div>
-      <div class="hguide">无法读取配置目录中的状态（${esc(s.error)}）。本程序不会修改任何配置；请检查配置目录权限后重新打开。</div>
+      <div class="hline1"><span class="hname">当前配置：读取失败</span></div>
+      <div class="hmeta"><span>无法读取配置目录中的状态（${esc(s.error)}）。本程序不会修改任何配置；请检查配置目录权限后重新打开。</span></div>
     </div>`;
     return;
   }
 
   if (!s.current){
     box.className = "hero empty";
-    const liveTag = s.live_exists
-      ? `<span class="htag">有正在使用的配置</span>`
-      : `<span class="htag mute">无正在使用的配置</span>`;
-    const guide = s.guessed
-      ? `正在使用的配置与预设 <b>${esc(s.guessed)}</b> 一致：在左侧选中它后点边栏的「切换」即可记为当前预设。`
-      : s.live_exists
-        ? `在左侧选择要用的配置后点边栏的「切换」；也可以用「配置 › 另存为新预设…」把当前配置保存成第一个预设。`
-        : `还没有任何预设。用「配置 › 新建配置向导…」创建一份，或在「工具 › 配置位置…」里指定 Codex 目录。`;
+    // 当前配置未记录时也走同一套两行排版：第一行「当前配置：未记录」，第二行说明现状。
+    const name = s.guessed ? `正在使用的配置与预设 <b>${esc(s.guessed)}</b> 一致`
+                           : (s.live_exists ? `正在使用的配置不属于任何预设` : `配置目录中没有正在使用的配置`);
     box.innerHTML = `<div class="hcard">
-      <div class="ht"><span class="hname">尚未记录「当前预设」</span>${liveTag}</div>
-      <div class="hguide">${guide}</div>
+      <div class="hline1"><span class="hname">当前配置：未记录</span></div>
+      <div class="hmeta"><span>${name}</span></div>
     </div>`;
     return;
   }
 
-  const cur = s.presets.find(p => p.name === s.current) || null;
-  const model = cur ? (cur.model || "<默认>") : "<默认>";
-  const prov = cur ? (cur.provider || "官方") : "官方";
-  const when = s.switched_at_human ? `上次切换：${esc(s.switched_at_human)}` : "尚未记录切换时间";
+  // 两行排版（用户定的样式）：
+  //   第一行  当前配置：<预设名>
+  //   第二行  模型 X   供应商 X   应用时间 X
+  // 值缺失时沿用卡片里的写法：模型 <默认> / 供应商 官方。
+  const cp = s.current_preset || {};
+  const model = cp.model || "<默认>";
+  const provider = cp.provider || "官方";
+  const when = s.switched_at_human ? `${esc(s.switched_at_human)} 应用` : "";
   box.className = "hero" + (s.changed ? " dirty" : "");
   box.innerHTML = `<div class="hcard">
-    <div class="ht"><span class="hname">${esc(s.current)}</span>
-      <span class="htag">正在使用</span>
-      ${s.changed ? `<span class="htag mute" style="background:var(--warn-soft);color:var(--warn);border-color:rgba(183,121,31,.25)">有未同步变化</span>` : ""}</div>
-    <div class="hmeta"><span><span class="k">model</span> ${esc(model)}</span>
-      <span><span class="k">provider</span> ${esc(prov)}</span>
-      <span>${esc(when)}</span></div>
-    <div class="hguide">在左侧选中目标预设后点右边栏的「切换」；改模型 / 地址 / 密钥变量：右键卡片选「编辑配置…」，或用「配置 › 编辑所选配置…」。</div>
+    <div class="hline1">
+      <span class="hname">当前配置：${esc(s.current)}</span>
+      ${s.current_missing ? `<span class="htag mute" style="background:var(--warn-soft);color:var(--warn);border-color:rgba(183,121,31,.25)">预设已不存在</span>` : ""}
+      ${s.changed ? `<span class="htag mute" style="background:var(--warn-soft);color:var(--warn);border-color:rgba(183,121,31,.25)">有更新 ≈${s.changed_lines} 行</span>` : ""}
+    </div>
+    <div class="hmeta">
+      <span><span class="k">模型</span> ${esc(model)}</span>
+      <span><span class="k">供应商</span> ${esc(provider)}</span>
+      ${when ? `<span><span class="k">应用时间</span> ${when}</span>` : ""}
+    </div>
   </div>`;
 }
 
@@ -649,30 +680,26 @@ function renderPresets(){
   const box = $("plist");
   if (!STATE.presets.length){
     box.innerHTML = `<div class="empty onboard">
-      <h3>欢迎使用 Codex 配置管理器</h3>
-      <p>这里集中管理你的 Codex 模型配置（模型、供应商、地址、密钥变量），一键切换、随时回退。</p>
+      <h3>还没有预设</h3>
+      <p>预设就是一份 Codex 配置（模型、供应商、接口地址、密钥变量）。建好之后可以一键启用、随时回退。</p>
       <ol class="steps">
-        <li><b>切换</b>：选中一个预设，点右侧边栏的「切换」；</li>
-        <li><b>管理</b>：在卡片上<b>右键</b>，或使用顶部「配置」菜单 —— 编辑、复制、删除、另存都在那里；</li>
-        <li><b>开始</b>：用「配置 › 新建配置向导…」建第一份；已有配置可用「配置 › 另存为新预设…」保存副本。</li>
+        <li>点顶栏<b>「新建」</b>建第一份；已有配置可用<b>「工具 › 同步预设」</b>把它存下来。</li>
+        <li>选中一个预设，点右侧边栏的<b>「启用配置」</b>。</li>
+        <li>在卡片上<b>右键</b>可编辑、对比、复制、另存为、删除。</li>
       </ol>
-      <p>低频与诊断功能（差异、历史恢复、宿主进程诊断、配置位置等）都收在顶部「工具」菜单里。</p>
     </div>`;
     return;
   }
   box.innerHTML = STATE.presets.map(p => {
     const sel = (p.name === SELECTED) ? " sel" : "";
     const cur = p.is_current ? `<span class="tag">当前</span>` : "";
-    const dirty = (p.is_current && STATE.changed) ? `<span class="tag dirty">有未同步变化</span>` : "";
-    const url = p.base_url ? `<span><span class="k">url</span> ${esc(p.base_url)}</span>` : "";
-    const ek = p.env_key ? `<span><span class="k">key</span> ${esc(p.env_key)}</span>` : "";
+    const dirty = (p.is_current && STATE.changed) ? `<span class="tag dirty">有更新</span>` : "";
     return `<div class="card${sel}" data-name="${esc(p.name)}" title="单击选中 · 双击编辑 · 右键更多操作">
       <span class="dotmark${p.is_current?" on":""}"></span>
       <div class="l1"><span class="nm">${esc(p.name)}</span>${cur}${dirty}</div>
       <div class="l2">
-        <span><span class="k">model</span> ${esc(p.model || "<默认>")}</span>
-        <span><span class="k">provider</span> ${esc(p.provider || "官方")}</span>
-        ${url}${ek}
+        <span><span class="k">模型</span> ${esc(p.model || "<默认>")}</span>
+        <span><span class="k">供应商</span> ${esc(p.provider || "官方")}</span>
       </div>
     </div>`;
   }).join("");
@@ -705,20 +732,20 @@ function openCtx(name, x, y){
   const isCur = name === STATE.current;
   const running = !!(STATE.guard && STATE.guard.running);
   const switchTip = running
-    ? "Codex 正在运行，不能切换。请完全退出 Codex / ChatGPT 桌面应用（含托盘）后再试。"
+    ? "Codex 正在运行，不能启用。请完全退出 Codex / ChatGPT 桌面应用（含托盘）后再试。"
     : isCur
-      ? `${name} 正在使用中；切换会重新应用这个预设（内容一致时不会产生变化）。`
-      : `把正在使用的配置切换到 ${name}（切换前自动备份）。`;
+      ? `${name} 正在使用中；再次启用会重新应用这个预设（内容一致时不会产生变化）。`
+      : `把正在使用的配置启用为 ${name}（启用前自动备份）。`;
   const items = [
-    ctxButton("", "切换到此预设", switchTip, running, doSwitch),
-    ctxButton("", "编辑配置…", "修改模型 / 供应商 / 地址 / 密钥变量", false, () => openEditor(name)),
-    ctxButton("", "查看差异", "对比正在使用的配置与这个预设", false, doDiff),
+    ctxButton("", "启用", switchTip, running, doSwitch),
+    ctxButton("", "编辑", "修改模型 / 供应商 / 接口地址 / 密钥变量", false, () => openEditor(name)),
+    ctxButton("", "对比", "对比正在使用的配置与这个预设", false, doDiff),
     {sep:true},
-    ctxButton("", "复制此预设…", "逐字节复制，不会启用新配置", false, doCopy),
-    ctxButton("", "另存为新预设…", STATE.live_exists ? "把正在使用的配置存成一个新预设" : "当前没有正在使用的配置",
+    ctxButton("", "复制", "逐字节复制，不会启用新配置", false, doCopy),
+    ctxButton("", "另存为", STATE.live_exists ? "把正在使用的配置存成一个新预设" : "当前没有正在使用的配置",
               !STATE.live_exists, doSaveNew),
     {sep:true},
-    ctxButton("danger", "删除此预设…", isCur ? "当前正在使用的配置不能删除" : "删除前自动备份；历史记录与环境变量不删除",
+    ctxButton("danger", "删除", isCur ? "当前正在使用的配置不能删除" : "删除前自动备份；历史记录与环境变量不删除",
               isCur, doDelete),
   ];
   el.innerHTML = `<div class="ctxhead">${esc(name)}</div>` + items.map((it, i) =>
@@ -749,32 +776,28 @@ function menuTip(id, tip){
 function renderButtons(){
   if (BUSY){ return; }
   const running = STATE.guard.running;
-  const hasSel = !!SELECTED;
-  const selTxt = hasSel ? SELECTED : "所选预设";
-  $("b-edit").disabled = !hasSel;
-  $("b-harvest").disabled = running || !STATE.current;
-  $("b-diff").disabled = !hasSel;
-  $("b-copy").disabled = !hasSel;
-  $("b-delete").disabled = !hasSel || SELECTED === STATE.current;
-  $("b-history").disabled = false;
-  $("b-save").disabled = !STATE.live_exists;
-  $("b-guard").disabled = false;
-  $("b-dry").disabled = !hasSel;
+  // 顶栏现在是「两个直按钮 + 两个下拉」：
+  //   新建 —— 直按钮，永远可用
+  //   工具 —— 同步预设 / 历史恢复 / 进程诊断
+  //   设置 —— 直按钮，直接进设置，不再套一层下拉
+  //   帮助 —— 使用帮助 / 手动恢复说明 / 关于
+  // 编辑、另存、复制、删除、对比、演练这些针对单个预设的动作全部收进卡片右键菜单，
+  // 顶栏不再重复一份 —— 同一件事只留一个入口，避免两处文案和状态各说各话。
   $("b-new").disabled = false;
+  $("b-harvest").disabled = running || !STATE.current;
+  $("b-history").disabled = false;
+  $("b-guard").disabled = false;
   $("b-paths").disabled = false;
   $("b-help").disabled = false;
   $("b-recovery").disabled = false;
   $("b-about").disabled = false;
-  menuTip("b-edit", hasSel ? `编辑预设 ${selTxt}` : "请先在左侧选择一个预设");
-  menuTip("b-diff", hasSel ? `对比正在使用的配置与 ${selTxt}` : "请先在左侧选择一个预设");
-  menuTip("b-copy", hasSel ? `逐字节复制 ${selTxt}` : "请先在左侧选择一个预设");
-  menuTip("b-dry", hasSel ? `完整跑一遍切换到 ${selTxt} 的流程，但不写入` : "请先在左侧选择一个预设");
-  menuTip("b-delete", !hasSel ? "请先在左侧选择一个预设"
-    : (SELECTED === STATE.current ? "当前正在使用的配置不能删除，请先切换到其他配置" : `删除 ${selTxt}（删除前自动备份）`));
+  menuTip("b-new", "新建一个预设（可选择官方服务或自定义模型）");
   menuTip("b-harvest", running ? "Codex 正在运行，暂不能同步。请完全退出后再试。"
     : (!STATE.current ? "还没有「当前预设」记录，无可同步的对象" : `把正在使用的改动同步回 ${STATE.current}`));
-  menuTip("b-save", STATE.live_exists ? "把正在使用的配置存成一个新预设" : "当前没有正在使用的配置，无法另存");
-  // 「切换」与「启动 ChatGPT」的置灰原因各自写在按钮提示里（见 renderSwitchButton /
+  menuTip("b-history", "从 configs\\.history 里的历史版本恢复预设");
+  menuTip("b-guard", "查看宿主进程的判定依据与结果");
+  menuTip("b-paths", "查看和修改预设库位置、配置目录位置");
+  // 「启用配置」与「启动 ChatGPT」的置灰原因各自写在按钮提示里（见 renderSwitchButton /
   // renderChatGPTButton）。启动 ChatGPT 与配置切换无关：Codex 正在运行不影响启动宿主
   // 应用，故不跟随守卫置灰；是否可用只看 ChatGPT 界面本身有没有打开。
   renderSwitchButton();
@@ -784,7 +807,8 @@ function setBusy(b){
   BUSY = b;
   $("spin").classList.toggle("on", b);
   document.body.classList.toggle("busy", b);
-  for (const id of ["b-new","b-switch","b-edit","b-harvest","b-save","b-diff","b-copy","b-delete","b-history","b-paths","b-guard","b-dry","b-chatgpt"]){
+  for (const id of ["b-new","b-switch","b-harvest","b-history","b-paths","b-guard",
+                    "b-help","b-recovery","b-about","b-chatgpt"]){
     const el = $(id); if (el) el.disabled = b;
   }
   closeMenu(); closeCtx();
@@ -916,14 +940,14 @@ async function openPathSettings(first=false, initial=null){
   const corrupt=info.settings_status==='corrupt'?`<div class="fnote warn">设置文件损坏：${esc(info.settings_error||'格式无效')}。可重新选择并保存来恢复默认。</div>`:'';
   const candidates=first&&PATH_INIT&&PATH_INIT.path_candidates&&PATH_INIT.path_candidates.length
     ? `<div class="fieldlbl">检测到的位置</div><select id="path-candidate"><option value="">手动选择</option>${PATH_INIT.path_candidates.map(x=>`<option value="${esc(x.path)}">${esc(x.source)} · ${esc(x.path)} · ${x.config_exists?'有 config.toml':'无 config.toml'} · ${x.preset_count} 个预设${x.modified?' · '+esc(x.modified):''}</option>`).join('')}</select>`:'';
-  modal(first?'首次设置配置位置':'配置位置',`${corrupt}${envNote}${candidates}
+  modal(first?'首次设置':'设置',`${corrupt}${envNote}${candidates}
     <div class="fieldlbl">Codex 配置目录（包含 config.toml）</div>
-    <div style="display:flex;gap:7px"><input id="path-home" type="text" value="${esc(init.codex_home||'')}" spellcheck="false"><button id="path-home-dir">选择目录…</button><button id="path-home-file">选择 config.toml…</button></div>
+    <div style="display:flex;gap:7px"><input id="path-home" type="text" value="${esc(init.codex_home||'')}" spellcheck="false"><button id="path-home-dir">选择目录</button><button id="path-home-file">选择 config.toml</button></div>
     <div class="fieldlbl">预设目录</div>
-    <div style="display:flex;gap:7px"><input id="path-configs" type="text" value="${esc(init.configs_dir||'')}" spellcheck="false"><button id="path-configs-dir">选择目录…</button></div>
+    <div style="display:flex;gap:7px"><input id="path-configs" type="text" value="${esc(init.configs_dir||'')}" spellcheck="false"><button id="path-configs-dir">选择目录</button></div>
     <label style="display:flex;gap:7px;align-items:center;margin-top:9px"><input id="path-follow" type="checkbox" ${followed?'checked':''}> 预设目录跟随 Codex 目录（&lt;Codex目录&gt;\\configs）</label>
     <label style="display:flex;gap:7px;align-items:center;margin-top:9px"><input id="path-create" type="checkbox"> 若目录不存在，确认创建上面显示的精确目录</label>
-    <div class="fhint">切换只改变本管理器以后读写的位置，不搬移、不删除旧目录数据。预设历史始终保存在所选预设目录的 <code>.history</code> 下。</div>
+    <div class="fhint">改位置只改变本管理器以后读写的位置，不搬移、不删除旧目录数据。预设历史始终保存在所选预设目录的 <code>.history</code> 下。</div>
     <div id="path-preview"></div>`,[
       {label:first?'稍后设置':'取消',onClick:closeModal},
       {label:'恢复默认',onClick:()=>{const h=(PATH_INIT&&PATH_INIT.path_candidates||[]).find(x=>x.source==='默认目录');const v=h?h.path:'';$('path-home').value=v;$('path-follow').checked=true;$('path-configs').value=v.replace(/[\\\/]$/,'')+'\\configs';updatePathPreview();}},
@@ -939,8 +963,8 @@ async function openPathSettings(first=false, initial=null){
 async function applyPathSettings(){
   const create=$('path-create').checked;
   const r=await api().apply_paths($('path-home').value,$('path-configs').value,create);
-  if(!r||!r.ok){toast((r&&r.error)||'配置位置切换失败');updatePathPreview();return;}
-  closeModal(true);SELECTED=null;await refresh(false);toast(r.message||'配置位置已切换');
+  if(!r||!r.ok){toast((r&&r.error)||'设置保存失败');updatePathPreview();return;}
+  closeModal(true);SELECTED=null;await refresh(false);toast(r.message||'设置已保存');
 }
 
 /* ---------------- 任务执行 ---------------- */
@@ -1111,12 +1135,12 @@ function renderEditor(){
       <div class="fl">预设名</div>
       <div class="fi"><input type="text" id="e-name" value="${esc(f.preset)}" spellcheck="false"></div>
 
-      <div class="fl">模型 ID</div>
+      <div class="fl">模型</div>
       <div class="fi"><div style="display:flex;gap:7px"><input type="text" id="e-model" list="e-model-list" value="${esc(f.model)}" spellcheck="false"
         placeholder="留空则用官方默认模型"><button type="button" id="e-models">获取模型</button></div><datalist id="e-model-list"></datalist>
         <div class="fhint" id="e-model-result">保留手工输入；获取列表不等于模型可调用。</div></div>
 
-      <div class="fl">供应商 ID</div>
+      <div class="fl">供应商</div>
       <div class="fi">
         <input type="text" id="e-provider" value="${esc(f.model_provider)}" spellcheck="false" placeholder="例如 aibank">
         ${chips}
@@ -1126,18 +1150,18 @@ function renderEditor(){
       <div class="fi"><select id="e-reason">${opt(REASON_OPTS, f.reasoning)}</select></div>
 
       <div class="fsec">供应商块 <code id="e-sectag">[model_providers.${esc(f.model_provider || "…")}]</code>
-        <span class="offnote">未填供应商 ID —— 以下字段本次不会被写入</span></div>
+        <span class="offnote">未填供应商 —— 以下字段本次不会被写入</span></div>
 
       <div class="fl">显示名称</div>
       <div class="fi"><input type="text" id="e-pname" value="${esc(f.prov_name)}" spellcheck="false"></div>
 
-      <div class="fl">Base URL</div>
+      <div class="fl">接口地址</div>
       <div class="fi"><input type="text" id="e-url" value="${esc(f.base_url)}" spellcheck="false"
         placeholder="https://example.com/v1"></div>
 
-      <div class="fl">API Key</div>
+      <div class="fl">API 密钥</div>
       <div class="fi">
-        <div class="secret-field"><input type="password" id="e-apikey" autocomplete="new-password" placeholder="留空表示不修改已保存的密钥"><button type="button" id="e-keyshow" aria-label="显示 API Key" aria-pressed="false">显示</button></div>
+        <div class="secret-field"><input type="password" id="e-apikey" autocomplete="new-password" placeholder="留空表示不修改已保存的密钥"><button type="button" id="e-keyshow" aria-label="显示 API 密钥" aria-pressed="false">显示</button></div>
         <div class="fhint">保存后写入当前 Windows 用户环境变量，不写进配置文件。环境变量不是加密存储。</div>
       </div>
 
@@ -1153,11 +1177,11 @@ function renderEditor(){
 
     ${f.is_current
       ? `<div class="fnote warn">该预设<b>正在使用中</b>。保存会先把正在使用的 <code>config.toml</code> 的改动同步进本预设，
-          再写入并同步回正在使用的配置 —— 否则下一次切换会把这次编辑冲掉。</div>`
+          再写入并同步回正在使用的配置 —— 否则下一次启用会把这次编辑冲掉。</div>`
       : `<div class="fnote">该预设<b>未在使用中</b>，保存只改动这个预设文件；正在使用的配置与状态记录都不受影响。</div>`}
 
-    <div class="fnote">本地检查不联网；获取列表不等于模型可调用。“测试模型调用”会发送固定短文本并可能产生少量费用。未保存的 API Key 只用于本次请求。</div>
-    <div style="display:flex;gap:8px;margin-top:10px"><button id="e-check" onclick="checkEditor()">本地检查（不联网）</button><button id="e-connect" onclick="testEditorConnection()">测试模型调用…</button></div>
+    <div class="fnote">「检查配置」只读本地文件，不联网；「测试模型」会向接口地址发送一段固定短文本并可能产生少量费用。未保存的 API 密钥只用于本次请求。</div>
+    <div style="display:flex;gap:8px;margin-top:10px"><button id="e-check" onclick="checkEditor()">检查配置</button><button id="e-connect" onclick="testEditorConnection()">测试模型</button></div>
     <div id="e-check-result" class="fhint" aria-live="polite"></div>
     <div class="errbox" id="e-err"></div>
 
@@ -1168,7 +1192,7 @@ function renderEditor(){
 
   modal(`编辑配置 · ${esc(f.preset)} ${curTag}`, body, [
     { label: "取消", onClick: closeModal },
-    { label: "保存并启用…", onClick: () => doSave(true) },
+    { label: "保存并启用", onClick: () => doSave(true) },
     { label: "保存", cls: "primary", onClick: () => doSave(false) },
   ], true);
 
@@ -1269,8 +1293,8 @@ function toggleSecret(inputId,buttonId){
    「本地服务 / Responses API / Chat Completions」三个模板已按用户要求取消：
    它们只是自定义模型的预填组合，字段本来就能全改，留着反而增加选择负担。 */
 const WIZ_TEMPLATE_LABELS = {
-  official: "官方服务（在 Codex / ChatGPT 中登录）",
-  third_party: "自定义模型（OpenAI 兼容接口）",
+  official: "官方服务",
+  third_party: "自定义模型",
 };
 let WIZ = {kind:'official', template:'official', form:{}};
 function wizardTemplate(){ return WIZ.template || WIZ.kind || 'official'; }
@@ -1302,28 +1326,39 @@ function openWizard(){
   const tplOpts=Object.entries(WIZ_TEMPLATE_LABELS).map(([v,label])=>
     `<option value="${v}"${official===(v==='official')?' selected':''}>${esc(label)}</option>`).join('');
   /* 官方服务：只问一个名字。建出来的是空白预设 —— 不写 model / provider / 地址 / 密钥。 */
-  const nameRow=`<div class="fgrid"><label class="fl" for="w-new_name">预设名</label><input id="w-new_name" type="text" value="${esc(f.new_name||'')}" placeholder="字母、数字、连字符、下划线"></div>`;
+  /* 字段结构与编辑器**完全一致**：扁平写 <div class="fl">标签</div> + <div class="fi">控件</div>，
+     由 .fgrid 的两列网格统一对齐。不要混用 .fieldlbl（那是块级左对齐的另一套），
+     否则同一个表单里会出现两种缩进与两种行距。 */
+  const nameRow=`<div class="fgrid"><div class="fl">预设名</div>
+    <div class="fi"><input id="w-new_name" type="text" value="${esc(f.new_name||'')}" placeholder="字母、数字、连字符、下划线"></div></div>`;
   /* 自定义模型：这五个字段就是会写进预设文件的**全部内容**。 */
-  const modelRows=`<div class="fgrid"><label class="fl" for="w-model">模型 ID</label><div style="display:flex;gap:7px"><input id="w-model" list="w-model-list" type="text" value="${esc(f.model||'')}" placeholder="填写供应商提供的准确模型 ID"><button type="button" id="w-models">获取模型</button></div><datalist id="w-model-list"></datalist></div>
-    <div id="w-third"><div class="fieldlbl">供应商 ID</div><input type="text" id="w-model_provider" value="${esc(f.model_provider||'')}" placeholder="例如 my_provider">
-    <div class="fieldlbl">Base URL（HTTPS）</div><input type="text" id="w-base_url" value="${esc(f.base_url||'')}">
-    <div class="fieldlbl">API Key</div><div class="secret-field"><input type="password" id="w-api_key" autocomplete="new-password" placeholder="粘贴供应商提供的 API Key"><button type="button" id="w-keyshow" aria-label="显示 API Key" aria-pressed="false">显示</button></div>
-    <div class="fieldlbl">密钥变量名</div><div style="display:flex;gap:7px"><input type="text" id="w-env_key" value="${esc(f.env_key||'')}" placeholder="自动生成"><button type="button" id="w-keyauto">自动</button></div>
-    <div class="fhint">一般无需修改。保存后密钥写入当前用户环境变量，不写进配置文件。</div>
-    <div class="fieldlbl">接口协议</div><select id="w-wire_api">${opt(WIRE_OPTS,f.wire_api||'responses')}</select></div>
-    <div style="display:flex;gap:8px"><button id="w-check">本地检查（不联网）</button><button id="w-connect">测试模型调用…</button></div>`;
+  const modelRows=`<div class="fgrid">
+    <div class="fl">模型</div>
+    <div class="fi"><div style="display:flex;gap:7px"><input id="w-model" list="w-model-list" type="text" value="${esc(f.model||'')}" placeholder="填写供应商提供的准确模型 ID"><button type="button" id="w-models">获取模型</button></div><datalist id="w-model-list"></datalist></div>
+    <div class="fl">供应商</div>
+    <div class="fi"><input type="text" id="w-model_provider" value="${esc(f.model_provider||'')}" placeholder="例如 my_provider"></div>
+    <div class="fl">接口地址（HTTPS）</div>
+    <div class="fi"><input type="text" id="w-base_url" value="${esc(f.base_url||'')}" placeholder="https://example.com/v1"></div>
+    <div class="fl">API 密钥</div>
+    <div class="fi"><div class="secret-field"><input type="password" id="w-api_key" autocomplete="new-password" placeholder="粘贴供应商提供的 API 密钥"><button type="button" id="w-keyshow" aria-label="显示 API 密钥" aria-pressed="false">显示</button></div></div>
+    <div class="fl">密钥变量名</div>
+    <div class="fi"><div style="display:flex;gap:7px"><input type="text" id="w-env_key" value="${esc(f.env_key||'')}" placeholder="自动生成"><button type="button" id="w-keyauto">自动</button></div>
+      <div class="fhint">一般无需修改。保存后密钥写入当前用户环境变量，不写进配置文件。</div></div>
+    <div class="fl">接口协议</div>
+    <div class="fi"><select id="w-wire_api">${opt(WIRE_OPTS,f.wire_api||'responses')}</select></div>
+    </div>
+    <div style="display:flex;gap:8px"><button id="w-check">检查配置</button><button id="w-connect">测试模型</button></div>`;
   const guide=official
-    ? '官方服务：不需要地址或密钥，用你的官方账号登录即可。会创建一个<b>空白预设</b>（不含任何设置）；切换到它之后，首次打开 Codex / ChatGPT 时会自动补齐官方默认配置。'
-    : '自定义模型：预设文件<b>只写大模型相关设置</b>（模型 ID、供应商、Base URL、密钥变量名、接口协议）；项目、插件等其余内容由 Codex / ChatGPT 在打开时自动补齐。只填写环境变量名称，不要粘贴密钥。地址应包含供应商要求的 API 前缀（例如 /v1），不包含 /responses 或 /chat/completions。';
-  modal('新建配置向导', `<p>1. 选择模板　2. 填写配置　3. 检查并保存</p>
+    ? '官方服务：不需要地址或密钥，用官方账号登录即可。会创建一个<b>空白预设</b>；启用它之后，首次打开 Codex / ChatGPT 时会自动补齐官方默认配置。'
+    : '自定义模型：预设文件<b>只写大模型相关设置</b>（模型、供应商、接口地址、密钥变量名、接口协议）；项目、插件等其余内容由 Codex / ChatGPT 在打开时自动补齐。只填写环境变量名称，不要粘贴密钥。地址应包含供应商要求的 API 前缀（例如 /v1），不包含 /responses 或 /chat/completions。';
+  modal('新建', `<p id="w-guide">${guide}</p>
     <select id="w-kind">${tplOpts}</select>
-    <p id="w-guide">${guide}</p>
     ${nameRow}
     ${official?'':modelRows}
     <p>保存只创建预设，不改变正在使用的配置；保存并启用会在确认后替换配置。新建不继承旧配置中的项目、插件或其他设置。</p>
     <p id="w-result" aria-live="polite"></p>`, [
       {label:'取消',onClick:closeModal},
-      {label:'保存并启用…',onClick:()=>saveWizard(true)},
+      {label:'保存并启用',onClick:()=>saveWizard(true)},
       {label:'保存',cls:'primary',onClick:()=>saveWizard(false)}],true);
   WIZ.envManual=!!(f.env_key);
   const suggestWizardKey=async(force=false)=>{if(official||(!force&&WIZ.envManual))return;const v=await api().suggest_env_key($('w-model_provider').value.trim(),$('w-new_name').value.trim());if(!force&&WIZ.envManual)return;$('w-env_key').value=v;WIZ.form.env_key=v;};
@@ -1338,7 +1373,7 @@ function openWizard(){
   }
   const markWizardDirty=()=>{WIZ.userEdited=true;updateDirty();};
   for(const id of ['w-new_name','w-model','w-model_provider','w-base_url','w-env_key','w-wire_api','w-api_key']){const e=$(id);if(e)e.addEventListener(e.tagName==='SELECT'?'change':'input',markWizardDirty);}
-  $('w-kind').onchange=()=>{if(wizardHasInput()&&!confirm('切换模板会替换已填写的模板字段，是否继续？')){$('w-kind').value=wizardTemplate();return;} applyWizardTemplate($('w-kind').value);};
+  $('w-kind').onchange=()=>{if(wizardHasInput()&&!confirm('更换模板会替换已填写的模板字段，是否继续？')){$('w-kind').value=wizardTemplate();return;} applyWizardTemplate($('w-kind').value);};
   if(!FORM_KIND)setFormSnapshot('wizard');
   else if(carryDirty){FORM_KIND='wizard';FORM_INITIAL=carryInitial;FORM_DIRTY=true;}
 }
@@ -1356,9 +1391,9 @@ async function saveWizard(activate){
 }
 function confirmActivation(name,form,kind,back,keyOpts={}){
   modal('确认保存并启用',`<p>将保存 <b>${esc(form.new_name||name)}</b>，并替换 Codex 正在使用的 <code>config.toml</code>。请先完全退出 Codex（含托盘）。</p>
-    <p>当前配置中的外部更改会先保存到原预设，再切换到新配置；没有当前预设记录时只做历史备份，不猜测归属。</p>
-    <p>切换前自动备份。启用失败时，已保存的预设仍保留，可退出 Codex 后选中它再次切换。完成后重新打开 Codex；官方配置可能需要登录。</p>
-    <p>恢复方法：退出 Codex，将历史文件复制到预设库并命名为 recovery.toml，再重新打开管理器选择 recovery 并切换。</p>`,[
+    <p>当前配置中的外部更改会先保存到原预设，再启用新配置；没有当前预设记录时只做历史备份，不猜测归属。</p>
+    <p>启用前自动备份。启用失败时，已保存的预设仍保留，可退出 Codex 后选中它再次启用。完成后重新打开 Codex；官方配置可能需要登录。</p>
+    <p>恢复方法：退出 Codex，将历史文件复制到预设库并命名为 recovery.toml，再重新打开管理器选择 recovery 并启用。</p>`,[
     {label:'返回编辑',onClick:()=>closeModal()},
     {label:'确认保存并启用',cls:'primary',onClick:()=>{MODAL_BACK=null;FORM_DIRTY=false;FORM_INITIAL=formSnapshot();closeModal(true);runJob('save_form',name,Object.assign({form_json:JSON.stringify(form),create_kind:kind,activate:true,confirmed:true},keyOpts));}}
   ], false, back);
@@ -1388,9 +1423,9 @@ async function fetchEditorModels(){
 function confirmModelCall(form,back){
   api().prepare_model_call(form,$("e-apikey")?$("e-apikey").value:"").then(r=>{
     if(!r.ok){toast([r.message,...Object.values(r.errors||{})].join(" "));return;}
-    modal("测试模型调用前确认",`<p>目标：<code>${esc(r.host)}</code><br>模型：${esc(r.model)}<br>协议：${esc(r.wire_api)}</p><p>将发送固定测试文本，可能产生少量费用。只发送一次，不发送配置内容。</p><p>启用 TLS 证书校验；不跟随跳转；12 秒超时；不自动重试。</p>`,[
+    modal("测试模型",`<p>目标：<code>${esc(r.host)}</code><br>模型：${esc(r.model)}<br>协议：${esc(r.wire_api)}</p><p>将发送固定测试文本，可能产生少量费用。只发送一次，不发送配置内容。</p><p>启用 TLS 证书校验；不跟随跳转；12 秒超时；不自动重试。</p>`,[
       {label:"取消",onClick:()=>closeModal()},
-      {label:"确认测试",cls:"primary",onClick:async()=>{MODAL_BACK=null;closeModal(true);setBusy(true);$("jobstat").textContent="测试模型调用中…";const x=await api().execute_network(r.token,true);setBusy(false);$("jobstat").textContent="";if(back)back();const el=$("e-check-result")||$("w-result");if(el)el.textContent=[x.message,x.status?`HTTP ${x.status}`:'',x.elapsed_ms!=null?`${x.elapsed_ms} ms`:'',x.protocol||''].filter(Boolean).join(' · ');else toast(x.message||"测试完成");}}
+      {label:"开始测试",cls:"primary",onClick:async()=>{MODAL_BACK=null;closeModal(true);setBusy(true);$("jobstat").textContent="测试模型中…";const x=await api().execute_network(r.token,true);setBusy(false);$("jobstat").textContent="";if(back)back();const el=$("e-check-result")||$("w-result");if(el)el.textContent=[x.message,x.status?`HTTP ${x.status}`:'',x.elapsed_ms!=null?`${x.elapsed_ms} ms`:'',x.protocol||''].filter(Boolean).join(' · ');else toast(x.message||"测试完成");}}
     ],false,back);
   });
 }
@@ -1408,45 +1443,55 @@ async function confirmConnection(form,back){
     {label:'我同意费用并发送一次',cls:'primary',onClick:()=>{MODAL_BACK=null;closeModal();runJob('connection',null,{token:r.token,confirmed:true});}}
   ],true,back);
 }
-$('b-new').onclick=()=>{if(BUSY)return;if(FORM_KIND&&updateDirty()){askLeave(()=>$('b-new').click());return;}clearFormState();WIZ={kind:'official',template:'official',form:{},userEdited:false};openWizard();setFormSnapshot('wizard');};
-$('b-recovery').onclick=()=>modal('恢复之前的配置',`<ol><li>完全退出 Codex（包括托盘），避免配置再次被覆盖。</li><li>打开 <code>${esc(STATE.lib)}</code> 下的 <code>.history</code>：live 保存切换前的配置，presets 保存各预设修改前的版本。</li><li>按时间选中需要的历史文件，<b>复制，不要移动</b>到预设库；改名为未使用的 <code>recovery.toml</code>（不要覆盖已有同名文件）。</li><li>重新打开管理器，选中 recovery，查看差异后切换到它。这样会先备份当前配置，恢复错误也可再选其他历史版本。</li><li>重新打开 Codex。登录凭据及环境变量不在这些备份中，必要时自行重新登录或设置。</li></ol>`,[{label:'我知道了',cls:'primary',onClick:closeModal}],true);
+/* 「新建」：顶栏直按钮。编辑中且有未保存改动时先问一句，再进向导。
+   做成具名函数，是为了让「新建」这件事只有一个实现 —— 顶栏按钮与
+   «询问是否离开» 回调里重入走的都是它。 */
+function doNew(){
+  if (BUSY) return;
+  if (FORM_KIND && updateDirty()){ askLeave(() => doNew()); return; }
+  clearFormState();
+  WIZ = {kind:'official', template:'official', form:{}, userEdited:false};
+  openWizard();
+  setFormSnapshot('wizard');
+}
+$('b-new').onclick = doNew;
+$('b-recovery').onclick=()=>modal('恢复之前的配置',`<ol><li>完全退出 Codex（包括托盘），避免配置再次被覆盖。</li><li>打开 <code>${esc(STATE.lib)}</code> 下的 <code>.history</code>：live 保存启用前的配置，presets 保存各预设修改前的版本。</li><li>按时间选中需要的历史文件，<b>复制，不要移动</b>到预设库；改名为未使用的 <code>recovery.toml</code>（不要覆盖已有同名文件）。</li><li>重新打开管理器，选中 recovery，查看差异后启用它。这样会先备份当前配置，恢复错误也可再选其他历史版本。</li><li>重新打开 Codex。登录凭据及环境变量不在这些备份中，必要时自行重新登录或设置。</li></ol>`,[{label:'我知道了',cls:'primary',onClick:closeModal}],true);
 $('b-help').onclick=()=>openHelp();
 
 /* ---------------- 使用帮助（按需打开，收纳原内联说明） ---------------- */
 function openHelp(){
   const g = STATE && STATE.guard;
-  const guardTxt = g ? (g.running ? "宿主应用<b>正在运行</b>，「切换」「只同步」被禁用"
+  const guardTxt = g ? (g.running ? "宿主应用<b>正在运行</b>，「启用配置」「同步预设」被禁用"
                                 : (g.source === "file" ? "宿主进程名单来自 <code>.guard</code> 文件"
                                                          : "宿主进程名单为内置默认")) : "";
   modal('使用帮助', `<div class="help-sec">
       <h3>日常操作</h3>
       <ul>
-        <li><b>切换</b>：在左侧选中一个预设，点右侧边栏的「切换」；有未同步变化时会先自动同步回当前预设。</li>
-        <li><b>编辑</b>：在卡片上<b>右键</b>选「编辑配置…」，或双击卡片；改模型 / 供应商 / 地址 / 密钥变量。</li>
-        <li><b>新建</b>：「配置 › 新建配置向导…」只两个模板 —— <b>官方服务</b>（建空白预设，登录即可）与<b>自定义模型</b>（只写大模型相关设置）。其余内容由 Codex / ChatGPT 打开时自动补齐。</li>
-        <li><b>另存</b>：「配置 › 另存为新预设…」把正在使用的配置存成新预设。</li>
-        <li><b>只同步</b>：「工具 › 只同步当前预设」把正在使用的改动写回当前预设，不改正在使用的配置。</li>
+        <li><b>启用</b>：在左侧选中一个预设，点右侧边栏的「启用配置」；有未同步变化时会先自动同步回当前预设。</li>
+        <li><b>编辑</b>：在卡片上<b>右键</b>选「编辑」，或双击卡片；改模型 / 供应商 / 接口地址 / 密钥变量。</li>
+        <li><b>新建</b>：点顶栏「新建」，只两个模板 —— <b>官方服务</b>（建空白预设，登录即可）与<b>自定义模型</b>（只写大模型相关设置）。其余内容由 Codex / ChatGPT 打开时自动补齐。</li>
+        <li><b>另存</b>：卡片<b>右键 › 另存为</b>，把正在使用的配置存成新预设。</li>
+        <li><b>同步预设</b>：「工具 › 同步预设」把正在使用的改动写回当前预设，不改正在使用的配置。</li>
       </ul>
     </div>
     <div class="help-sec">
       <h3>安全与保护</h3>
       <ul>
-        <li>切换 / 启用前会<b>自动备份</b>到 <code>configs/.history</code>，可随时回退。</li>
-        <li>${guardTxt}。完全退出 Codex（含托盘）后再切换，否则改动会被覆盖回去。</li>
-        <li>运行状态不单独占位置：<b>鼠标停在「切换」按钮上</b>可看到为什么不能切换，停在<b>「启动 ChatGPT」按钮上</b>可看到 ChatGPT 的运行状态。详细进程诊断在「工具 › 诊断宿主进程」。</li>
+        <li>启用前会<b>自动备份</b>到 <code>configs/.history</code>，可随时回退。</li>
+        <li>${guardTxt}。完全退出 Codex（含托盘）后再启用，否则改动会被覆盖回去。</li>
+        <li>运行状态不单独占位置：<b>鼠标停在「启用配置」按钮上</b>可看到为什么不能启用，ChatGPT 的运行状态直接显示在<b>边栏最下面一行</b>。详细进程诊断在「工具 › 进程诊断」。</li>
         <li>第三方连接测试只在你<b>显式确认</b>后发送一次：启用 TLS 校验、不跟随跳转、超时 12 秒、不保存密钥明文，可能产生费用。</li>
         <li>本程序只改预设与配置，不会替你登录官方账号、不读取官方登录凭据。</li>
       </ul>
     </div>
     <div class="help-sec">
-      <h3>低频 / 诊断（顶部「工具」菜单）</h3>
+      <h3>低频 / 诊断（顶栏「工具」菜单）</h3>
       <ul>
-        <li><b>查看差异</b>：对比正在使用的配置与所选预设（卡片右键里也有）。</li>
-        <li><b>诊断宿主进程</b>：扫描宿主进程，确认保护是否生效。</li>
-        <li><b>演练</b>：完整跑一遍切换流程但不写入。</li>
+        <li><b>同步预设</b>：把正在使用的改动写回当前预设，不改正在使用的配置。</li>
         <li><b>历史恢复</b>：列出备份、查看差异并安全恢复；恢复前会再次备份当前目标。</li>
-        <li><b>配置位置</b>：切换 Codex 配置目录与预设目录。</li>
-        <li><b>复制 / 删除</b>：复制不会启用；删除仅允许非当前配置，删除前自动备份。</li>
+        <li><b>进程诊断</b>：扫描宿主进程，确认保护是否生效。</li>
+        <li><b>设置</b>：切换 Codex 配置目录与预设目录。</li>
+        <li><b>编辑 / 对比 / 复制 / 另存为 / 删除</b>：都在<b>卡片右键菜单</b>里。复制不会启用；删除仅允许非当前配置，删除前自动备份。</li>
       </ul>
     </div>`, [{label:'关闭',cls:'primary',onClick:closeModal}], true);
 }
@@ -1459,31 +1504,19 @@ async function doSwitch(){
   let html = "";
   if (info.no_state){
     html = `<p>未找到「当前预设」记录，正在使用的配置中的改动<b>不会并入任何预设</b>。</p>
-            <p>将先保底备份正在使用的配置，然后切换到 <b>${esc(SELECTED)}</b>。</p>`;
+            <p>将先保底备份正在使用的配置，然后启用 <b>${esc(SELECTED)}</b>。</p>`;
   } else if (info.will_harvest){
-    html = `<p>将<b>同步</b>正在使用的配置 → 预设 <b>${esc(info.current)}</b>（改动约 <b>${info.changed_lines}</b> 行），然后切换到 <b>${esc(SELECTED)}</b>。</p>`;
+    html = `<p>将<b>同步</b>正在使用的配置 → 预设 <b>${esc(info.current)}</b>（改动约 <b>${info.changed_lines}</b> 行），然后启用 <b>${esc(SELECTED)}</b>。</p>`;
   } else {
-    html = `<p>正在使用的配置与 <b>${esc(info.current)}</b> 一致，无需同步。</p><p>将直接切换到 <b>${esc(SELECTED)}</b>。</p>`;
+    html = `<p>正在使用的配置与 <b>${esc(info.current)}</b> 一致，无需同步。</p><p>将直接启用 <b>${esc(SELECTED)}</b>。</p>`;
   }
   html += `<p style="color:var(--fg-3)">每一步都会自动留底到 <code>configs\\.history\\</code>，可随时回退。</p>`;
-  modal("确认切换", html, [
+  modal("确认启用", html, [
     { label: "取消", onClick: closeModal },
-    { label: "开始切换", cls: "primary", onClick: () => { closeModal(); runJob("switch", SELECTED, {}); } },
+    { label: "开始启用", cls: "primary", onClick: () => { closeModal(); runJob("switch", SELECTED, {}); } },
   ]);
 }
 $("b-switch").addEventListener("click", doSwitch);
-$("status").addEventListener("click", async (e) => {
-  const btn = e.target && e.target.closest ? e.target.closest("#b-force") : null;
-  if (!btn || btn.disabled || BUSY) return;
-  const info = await api().confirm_info(SELECTED, {});
-  const html = `<p style="color:var(--danger)"><b>宿主应用可能仍在运行。</b>强制切换后，新配置<b>可能立刻被覆盖回去</b>，同步到的也可能是半成品。</p>
-    <p>将强制切换到 <b>${esc(SELECTED)}</b>。</p>
-    <p style="color:var(--fg-3)">确认进程确实已退出后再继续。</p>`;
-  modal("强制切换 — 二次确认", html, [
-    { label: "取消", onClick: closeModal },
-    { label: "我已确认，强制切换", cls: "danger", onClick: () => { closeModal(); runJob("switch", SELECTED, { force: true }); } },
-  ]);
-});
 async function doHarvest(){
   const html = `<p>将把正在使用的配置的改动同步回预设 <b>${esc(STATE.current || "")}</b>。</p>
     <p style="color:var(--fg-3)">正在使用的配置与状态记录都<b>不会</b>改变；同步前的预设旧版本会备份到历史目录。</p>`;
@@ -1500,7 +1533,7 @@ function doSaveNew(){
     <div class="errmsg" id="nameerr"></div>
     <label style="display:flex;gap:7px;align-items:center;color:var(--fg-2);font-size:12px;margin-top:2px">
       <input type="checkbox" id="setcur" checked> 同时设为当前预设</label>`;
-  const foot = modal("另存为新预设", body, [
+  const foot = modal("另存为", body, [
     { label: "取消", onClick: closeModal },
     { label: "保存", cls: "primary", onClick: async () => {
         const name = $("newname").value.trim();
@@ -1514,8 +1547,6 @@ function doSaveNew(){
   const inp = $("newname");
   if (inp) inp.addEventListener("keydown", e => { if (e.key === "Enter") foot.querySelectorAll("button")[1].click(); });
 }
-$("b-save").addEventListener("click", doSaveNew);
-$("b-edit").addEventListener("click", () => { openEditor(SELECTED); });
 async function doDiff(){
   const d = await api().diff(SELECTED);
   if (d.error){ toast(d.error); return; }
@@ -1529,7 +1560,6 @@ async function doDiff(){
   }
   modal(`差异：正在使用的 ↔ ${esc(SELECTED)}`, body, [{ label: "关闭", cls: "primary", onClick: closeModal }], true);
 }
-$("b-diff").addEventListener("click", doDiff);
 function doCopy(){
   if (!SELECTED) return;
   const suggested = SELECTED + "-copy";
@@ -1546,11 +1576,10 @@ function doCopy(){
   ]);
   setTimeout(()=>$("copy-name")&&$("copy-name").focus(),30);
 }
-$("b-copy").addEventListener("click", doCopy);
 
 function doDelete(){
   if (!SELECTED) return;
-  if (SELECTED === STATE.current){toast("当前正在使用的配置不能删除。请先切换到其他配置。");return;}
+  if (SELECTED === STATE.current){toast("当前正在使用的配置不能删除。请先启用其他配置。");return;}
   const name=SELECTED;
   modal("删除配置", `<p>删除前会自动备份预设文件。历史记录和环境变量不会删除。</p>
     <p>请输入完整名称 <b>${esc(name)}</b> 以确认：</p>
@@ -1565,7 +1594,6 @@ function doDelete(){
     }}
   ]);
 }
-$("b-delete").addEventListener("click", doDelete);
 
 async function openHistory(){
   const r=await api().history_list();
@@ -1609,15 +1637,12 @@ $("b-guard").addEventListener("click", async () => {
   const g = await api().guard_info();
   let body;
   if (!g.hits.length){
-    body = `<p><b>Codex 未运行</b>，可以安全切换或同步配置。</p>`;
+    body = `<p><b>Codex 未运行</b>，可以安全启用或同步配置。</p>`;
   } else {
     body = `<p style="color:var(--danger)"><b>Codex 正在运行</b>。</p>
-      <p>为避免配置被 Codex 覆盖，切换和同步暂不可用。请完全退出 Codex（包括托盘）后重试。</p>`;
+      <p>为避免配置被 Codex 覆盖，启用和同步暂不可用。请完全退出 Codex（包括托盘）后重试。</p>`;
   }
-  modal("运行状态", body, [{ label: "关闭", cls: "primary", onClick: closeModal }], false);
-});
-$("b-dry").addEventListener("click", () => {
-  runJob("switch", SELECTED, { dry: true });
+  modal("进程诊断", body, [{ label: "关闭", cls: "primary", onClick: closeModal }], false);
 });
 $("b-chatgpt").addEventListener("click", async () => {
   // 只请求系统启动 ChatGPT：不改任何配置、不切换预设、不读取登录凭据。
@@ -1685,11 +1710,11 @@ $("plist").addEventListener("scroll", closeCtx);
 $("b-about").addEventListener("click", () => {
   const s = STATE || {};
   modal("关于", `<p><b>Codex 配置管理器</b> v${esc(s.version || "")}</p>
-    <p>集中管理 Codex 的模型配置：一键切换、编辑、备份与恢复。</p>
+    <p>集中管理 Codex 的模型配置：一键启用、编辑、备份与恢复。</p>
     <p style="color:var(--fg-3);word-break:break-all">Codex 配置目录：<code>${esc(s.root || "")}</code><br>
        预设目录：<code>${esc(s.lib || "")}</code></p>
-    <p style="color:var(--fg-3)">切换前自动备份到 <code>configs\\.history\\</code>；本程序不读取官方登录凭据，也不会自动登录。</p>
-    <p style="color:var(--fg-3)">操作入口：顶部「配置 / 工具 / 帮助」菜单，或在预设卡片上右键。</p>`,
+    <p style="color:var(--fg-3)">启用前自动备份到 <code>configs\\.history\\</code>；本程序不读取官方登录凭据，也不会自动登录。</p>
+    <p style="color:var(--fg-3)">操作入口：顶栏「新建 / 工具 / 设置 / 帮助」，或在预设卡片上右键。</p>`,
     [{label:"关闭",cls:"primary",onClick:closeModal}], false);
 });
 
@@ -1707,8 +1732,8 @@ window.addEventListener("pywebviewready", async () => {
   });
   const box = $("log");
   box.innerHTML = `<span class="l hintline">就绪。共 ${STATE.presets.length} 个预设` +
-    (STATE.current ? `，当前预设「${STATE.current}」` : "，尚无当前预设记录") +
-    `。选中预设后点右侧边栏的「切换」；在卡片上右键可用编辑 / 复制 / 删除 / 另存。</span>`;
+    (STATE.current ? `，当前 ${STATE.current}` : "，尚无当前预设") +
+    `。选中预设后点右侧「启用配置」；右键卡片可编辑 / 对比 / 复制 / 另存为 / 删除。</span>`;
   let ini = null;
   try { ini = await api().initial(); } catch (e) { ini = null; }
   PATH_INIT = ini || {};

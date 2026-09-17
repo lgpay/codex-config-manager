@@ -119,21 +119,31 @@ def worker():
 
         print("== 首页结构：当前配置 / 配置列表 / 主要操作 ==")
         chk("hero（当前配置）节点存在", js("!!document.getElementById('hero')"))
-        chk("hero 显示「正在使用」", "正在使用" in (js("document.getElementById('hero').textContent") or ""))
+        # IMP-032：hero 改两行排版，第一行「当前配置：<名>」，原来的「正在使用」角标取消。
+        _hero = js("document.getElementById('hero').textContent") or ""
+        chk("hero 以「当前配置：」报出正在用的预设", "当前配置" in _hero, _hero)
         chk("plist（配置列表）渲染卡片", js("!!document.querySelector('.card')"))
-        # IMP-021~025：常驻动作只剩两个按钮，且都进预设右侧的操作边栏
-        chk("切换按钮在右侧边栏内", js("!!document.querySelector('#sidebar #b-switch')"))
+        # IMP-021~025/033：常驻动作只剩两个按钮，且都进预设右侧的操作边栏
+        chk("启用按钮在右侧边栏内", js("!!document.querySelector('#sidebar #b-switch')"))
         chk("启动按钮也在同一个边栏内", js("!!document.querySelector('#sidebar #b-chatgpt')"))
         chk("主区只有这两个按钮", js("document.querySelectorAll('.body button').length") == 2)
         chk("原右侧「操作」栏已移除", js("!document.getElementById('actions')"))
 
-        print("== 功能迁入顶部菜单栏（配置 / 工具 / 帮助）==")
-        chk("菜单栏存在且有 3 个下拉", js("document.querySelectorAll('#menubar .mgroup').length") == 3)
+        print("== 功能分布：顶栏直按钮 + 两个下拉 + 右键菜单（IMP-031/037）==")
+        chk("菜单栏存在且只剩 2 个下拉（工具 / 帮助）",
+            js("document.querySelectorAll('#menubar .mgroup').length") == 2,
+            js("document.querySelectorAll('#menubar .mgroup').length"))
+        # IMP-037：直按钮从 1 个（新建）增到 2 个（新建 / 设置）。
+        chk("「新建」「设置」都是顶栏直按钮（都不在下拉里）",
+            js("[...document.querySelectorAll('#menubar .mact')].map(x=>x.textContent.trim())")
+            == ["新建", "设置"]
+            and not js("!!document.querySelector('.mpanel .mact')"),
+            js("[...document.querySelectorAll('#menubar .mact')].map(x=>x.textContent.trim())"))
+        # IMP-031：原「配置」下拉里的单条动作全部收进卡片右键菜单。
+        # 断言迁移（不是删除）：这里锁「它们确实不在顶栏」，能力由右键菜单断言兜住。
+        # IMP-037：设置已从工具菜单提出，故不在 in_menu 里。
         in_menu = {
-            "b-new": "配置", "b-edit": "配置", "b-save": "配置",
-            "b-copy": "配置", "b-delete": "配置",
-            "b-harvest": "工具", "b-diff": "工具", "b-history": "工具",
-            "b-guard": "工具", "b-dry": "工具", "b-paths": "工具",
+            "b-harvest": "工具", "b-history": "工具", "b-guard": "工具",
             "b-help": "帮助", "b-recovery": "帮助", "b-about": "帮助",
         }
         for bid, menu in in_menu.items():
@@ -142,7 +152,12 @@ def worker():
                           .find(x=>x.textContent.trim()===%r);
                         if(!t) return false;
                         return !!t.parentElement.querySelector('.mpanel #%s'); })()""" % (menu, bid)))
+        for gone in ["b-edit", "b-save", "b-copy", "b-delete", "b-diff", "b-dry", "m-config"]:
+            chk(f"顶栏已移除 #{gone}（改由右键菜单承担）",
+                not js("!!document.getElementById('%s')" % gone))
         chk("原 details.adv 折叠已移除", js("!document.querySelector('details.adv')"))
+        chk("顶栏不再有 h1 标题与 logo",
+            js("!document.querySelector('.topbar h1')") and js("!document.querySelector('.topbar .logo')"))
 
         print("== 状态条紧凑（运行状态改为按钮提示，不再常驻 pill）==")
         chk("状态条存在且有内容", (js("document.getElementById('status').children.length") or 0) > 0)
@@ -155,7 +170,7 @@ def worker():
         hb = js("document.getElementById('m-body').textContent") or ""
         chk("帮助标题为「使用帮助」",
             "使用帮助" in (js("document.getElementById('m-title').textContent") or ""))
-        chk("帮助含 切换/编辑/新建 说明", all(k in hb for k in ("切换", "编辑", "新建")))
+        chk("帮助含 启用/编辑/新建 说明", all(k in hb for k in ("启用", "编辑", "新建")))
         chk("帮助含 自动备份 安全提示", "自动备份" in hb, hb[:60])
         chk("帮助含 不跟随跳转 安全说明", "不跟随跳转" in hb, hb[:60])
         chk("帮助含 超时 安全说明", "超时" in hb, hb[:60])
@@ -165,18 +180,20 @@ def worker():
         time.sleep(0.4)
 
         print("== 全部原功能可达 ==")
-        # 查看差异
-        js("document.getElementById('b-diff').click();")
-        chk("查看差异弹层打开", wait_modal(True))
+        # 查看差异（IMP-031 起从顶栏移到卡片右键菜单）
+        js("SELECTED='example'; renderPresets(); openCtx('example', 10, 10);")
+        js("""[...document.querySelectorAll('#ctxmenu button.mi')]
+                .find(x=>x.textContent.trim()==='对比').click();""")
+        chk("对比弹层打开", wait_modal(True))
         time.sleep(0.3)
-        chk("差异弹层标题含「差异」", "差异" in (js("document.getElementById('m-title').textContent") or ""))
+        chk("对比弹层标题含「差异」", "差异" in (js("document.getElementById('m-title').textContent") or ""))
         close_modal()
         time.sleep(0.4)
         # 诊断宿主进程
         js("document.getElementById('b-guard').click();")
-        chk("诊断宿主进程弹层打开", wait_modal(True))
+        chk("进程诊断弹层打开", wait_modal(True))
         time.sleep(0.3)
-        chk("诊断标题为简洁的「运行状态」", "运行状态" in (js("document.getElementById('m-title').textContent") or ""))
+        chk("诊断标题为「进程诊断」", "进程诊断" in (js("document.getElementById('m-title').textContent") or ""))
         close_modal()
         time.sleep(0.4)
         # 如何恢复
@@ -188,19 +205,21 @@ def worker():
         chk("恢复步骤含 recovery.toml", "recovery.toml" in rb, rb[:60])
         close_modal()
         time.sleep(0.4)
-        # 编辑
-        js("document.getElementById('b-edit').click();")
+        # 编辑（IMP-031 起从顶栏移到卡片右键菜单）
+        js("SELECTED='example'; renderPresets(); openCtx('example', 10, 10);")
+        js("""[...document.querySelectorAll('#ctxmenu button.mi')]
+                .find(x=>x.textContent.trim()==='编辑').click();""")
         chk("编辑弹层打开", wait_modal(True))
         time.sleep(0.8)
         chk("编辑器标题含预设名", "example" in (js("document.getElementById('m-title').textContent") or ""))
         close_modal()
         time.sleep(0.5)
 
-        print("== 切换到所选预设 接通切换确认（中性守卫下启用）==")
+        print("== 边栏「启用配置」接通启用确认（中性守卫下可用）==")
         js("document.getElementById('b-switch').click();")
-        chk("切换确认弹层打开", wait_modal(True))
+        chk("启用确认弹层打开", wait_modal(True))
         time.sleep(0.3)
-        chk("弹层为「确认切换」", "确认切换" in (js("document.getElementById('m-title').textContent") or ""))
+        chk("弹层为「确认启用」", "确认启用" in (js("document.getElementById('m-title').textContent") or ""))
         close_modal()
         time.sleep(0.5)
 

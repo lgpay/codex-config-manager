@@ -30,8 +30,11 @@ const MOCK_STATE = {
   lib: "C:\\Users\\you\\.codex\\configs",
   guard_file: "C:\\Users\\you\\.codex\\configs\\.guard",
   live_exists: true,
-  current: "official",
+  current: "aibank",
   current_missing: false,
+  /* IMP-032：hero 要显示当前预设的模型 / 供应商，这里给那条预设的摘要。
+     用 aibank 当当前预设，这样第二行能看到真实的「模型 / 供应商 / 应用时间」。 */
+  current_preset: {name: "aibank", model: "gpt-5.6-luna", provider: "aibank"},
   switched_at: null,
   switched_at_human: "2026-09-17 08:20:11",
   changed: false,
@@ -39,9 +42,9 @@ const MOCK_STATE = {
   no_state: false,
   guessed: null,
   presets: [
-    {name: "official", model: "", provider: "", base_url: "", env_key: "", is_current: true},
+    {name: "official", model: "", provider: "", base_url: "", env_key: "", is_current: false},
     {name: "aibank", model: "gpt-5.6-luna", provider: "aibank",
-     base_url: "https://aibank.eu.org/v1", env_key: "AIBANK_API_KEY", is_current: false},
+     base_url: "https://aibank.eu.org/v1", env_key: "AIBANK_API_KEY", is_current: true},
     {name: "local-ollama", model: "qwen3:14b", provider: "local",
      base_url: "http://127.0.0.1:11434/v1", env_key: "LOCAL_API_KEY", is_current: false}
   ],
@@ -71,7 +74,7 @@ window.pywebview = { api: {
   guard_info: async () => ({hits: [], patterns: MOCK_STATE.guard.patterns,
     source: "default", source_text: MOCK_STATE.guard.source_text}),
   confirm_info: async () => ({no_state: false, will_harvest: false,
-    current: "official", changed_lines: 0}),
+    current: "aibank", changed_lines: 0}),
   diff: async () => ({same: false, changed: 3, rows: [
     {kind: "ctx", text: 'model_reasoning_effort = "medium"'},
     {kind: "del", text: ''}, {kind: "add", text: 'model = "gpt-5.6-luna"'},
@@ -110,6 +113,55 @@ window.dispatchEvent(new Event("pywebviewready"));
 </script>
 """
 
+# 场景切换条：真实界面靠 4 秒轮询更新 guard.running / chatgpt，预览里给个手动开关，
+# 方便一眼看全「Codex 运行中 / 未运行」「ChatGPT 未启动 / 后台驻留 / 运行中」各态下
+# 按钮文字与边栏底部状态行的样子。**只调用产品自己的 render* 函数**。
+SCENE_BAR = r"""
+<script>
+(function(){
+  var SCENES = [
+    {label:"通常（均未运行）", guard:false, cg:false, win:false, banner:""},
+    {label:"当前配置有更新",   guard:false, cg:false, win:false, banner:"dirty"},
+    {label:"Codex 运行中",     guard:true,  cg:false, win:false, banner:""},
+    {label:"ChatGPT 后台驻留", guard:false, cg:true,  win:false, banner:""},
+    {label:"ChatGPT 已打开",   guard:false, cg:true,  win:true,  banner:""},
+    {label:"预设已不存在",     guard:false, cg:false, win:false, banner:"missing"}
+  ];
+  var bar = document.createElement("div");
+  bar.style.cssText = "position:fixed;right:10px;bottom:10px;z-index:9999;display:flex;"
+    + "gap:6px;align-items:center;flex-wrap:wrap;max-width:70vw;background:#fff;"
+    + "border:1px solid #ccd2dc;border-radius:8px;padding:6px 9px;"
+    + "box-shadow:0 4px 14px rgba(0,0,0,.13);font:12px/1.4 system-ui,'Segoe UI',sans-serif";
+  var tag = document.createElement("span");
+  tag.textContent = "状态场景：";
+  tag.style.cssText = "color:#6b7280;font-weight:650";
+  bar.appendChild(tag);
+  SCENES.forEach(function(sc){
+    var b = document.createElement("button");
+    b.textContent = sc.label;
+    b.style.cssText = "padding:4px 9px;border-radius:6px;border:1px solid #ccd2dc;"
+      + "background:#f6f8fb;cursor:pointer;font:inherit";
+    b.onclick = function(){
+      MOCK_STATE.guard = Object.assign({}, MOCK_STATE.guard,
+        {running: sc.guard, total: sc.guard ? 2 : 0});
+      MOCK_STATE.chatgpt = {running: sc.cg, windowed: sc.win, count: sc.cg ? 9 : 0};
+      MOCK_STATE.changed = (sc.banner === "dirty");
+      MOCK_STATE.changed_lines = (sc.banner === "dirty") ? 4 : 0;
+      MOCK_STATE.current_missing = (sc.banner === "missing");
+      // 走产品自己的重绘路径 —— 看到的就是真实界面会呈现的效果
+      STATE = JSON.parse(JSON.stringify(MOCK_STATE));
+      renderHero(); renderStatus();
+      renderSwitchButton(); renderChatGPTButton();
+      b.blur();
+    };
+    bar.appendChild(b);
+  });
+  document.body.appendChild(bar);
+  bar.querySelector("button").click();   // 初始落到第一个场景
+})();
+</script>
+"""
+
 
 def main():
     html = ui.HTML
@@ -117,7 +169,9 @@ def main():
         raise SystemExit("ui.HTML 里没找到 pywebviewready，预览注入点已失效")
     # 版本号跟着 core.VERSION 走，发版后预览不会显示旧版本
     mock = MOCK.replace("__VERSION__", core.VERSION)
-    out = html.replace("</body>", mock + "</body>")
+    # 顺序很重要：mock（含 MOCK_STATE + 派发 ready）在前，场景条在后 ——
+    # 场景条要操作 MOCK_STATE、调 render*，必须等界面已经渲染过一次。
+    out = html.replace("</body>", mock + SCENE_BAR + "</body>")
     if out == html:
         raise SystemExit("注入失败：ui.HTML 里没有 </body>")
     # 预览是给人看的，不打包；不进 git 白名单也无所谓

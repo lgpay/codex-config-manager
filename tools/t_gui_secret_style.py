@@ -100,7 +100,9 @@ def check_form(kind, label):
     chk(label + " 不超父容器", shell["right"] <= body["right"] + 1 and shell["right"] <= modal["right"] + 1, str((shell, body, modal)))
     chk(label + " 初始为 password", js("document.getElementById('%s').type" % input_id) == "password")
     chk(label + " 初始 aria 状态正确", js("document.getElementById('%s').getAttribute('aria-pressed')" % button_id) == "false")
-    chk(label + " 按钮有可访问名称", js("document.getElementById('%s').getAttribute('aria-label')" % button_id) == "显示 API Key")
+    # IMP-036：aria-label 与可见文案统一为「API 密钥」（原来写「API Key」）。
+    chk(label + " 按钮有可访问名称", js("document.getElementById('%s').getAttribute('aria-label')" % button_id) == "显示 API 密钥",
+        js("document.getElementById('%s').getAttribute('aria-label')" % button_id))
     chk(label + " 按钮可由 Tab 聚焦", js("document.getElementById('%s').tabIndex" % button_id) == 0)
     js("document.getElementById('%s').value=%r; document.getElementById('%s').dispatchEvent(new Event('input',{bubbles:true}))" % (input_id, secret, input_id))
     chk(label + " 长密钥值保留", js("document.getElementById('%s').value.length" % input_id) == len(secret))

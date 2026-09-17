@@ -285,7 +285,7 @@ class Api:
 
         为什么单独开一个接口：`get_state` 会读配置目录、比对在用配置与全部预设，
         成本高，只在渲染与操作完成后调用；而「运行状态」必须**实时** ——
-        用户退出 Codex 之后，切换按钮要能立刻恢复可点。判定本身只是枚举一次进程，
+        用户退出 Codex 之后，启用按钮要能立刻恢复可点。判定本身只是枚举一次进程，
         实测约 9 ms，轮询成本可以忽略。
 
         任何异常都退化为「未在运行」：宁可让用户点一下再被真正拦截，
@@ -303,8 +303,8 @@ class Api:
         exe 路径，也不读取登录凭据或修改任何配置。找不到明确入口时返回可读失败信息，
         不做模糊兜底，避免误启动无关程序。
 
-        与配置切换/保存等任务互斥：启动期间置位 `_running`，避免用户误以为
-        “配置已经切换完成”的时序被打破；结束后无条件恢复，不覆盖配置任务结果。
+        与配置启用/保存等任务互斥：启动期间置位 `_running`，避免用户误以为
+        “配置已经启用完成”的时序被打破；结束后无条件恢复，不覆盖配置任务结果。
         """
         with self._lock:
             if self._running:
@@ -398,7 +398,7 @@ class Api:
         self.path_context = {"source": "settings", "configs_source": "settings",
                              "env_controlled": False, "settings": loaded}
         return {"ok": True, "settings": saved, **self.path_info(),
-                "message": "配置位置已切换；未搬移或删除旧目录中的任何数据。"}
+                "message": "配置位置已修改；未搬移或删除旧目录中的任何数据。"}
 
     # ---- 状态 ----
     def get_state(self) -> dict:
@@ -627,7 +627,7 @@ class Api:
                 if (opts.get("confirm_name") or "").strip() != name:
                     return {"error": "请输入完整配置名称以确认删除。"}
                 if core.preset_is_current(self.p, name):
-                    return {"error": "当前正在使用的配置不能删除。请先切换到其他配置。"}
+                    return {"error": "当前正在使用的配置不能删除。请先启用其他配置。"}
             except core.CoreError as e:
                 return {"error": str(e)}
         elif op == "restore":
@@ -726,7 +726,7 @@ class Api:
             value = None
         rep.ok("用户环境变量已保存（非加密存储），当前进程已更新并通知环境变化。请重启 Codex；若仍取不到密钥，请重启启动它的终端或宿主。")
         if not result.get("ok"):
-            rep.warn("预设和密钥已保存，但尚未启用。请退出 Codex 后再次切换。")
+            rep.warn("预设和密钥已保存，但尚未启用。请退出 Codex 后再次点「启用配置」。")
         return {k: v for k, v in dict(result, lines=rep.lines, key_saved=True).items()
                 if k in ("ok", "saved", "activated", "blocked", "new_name", "lines", "key_saved")}
 
@@ -854,12 +854,12 @@ HELP = f"""{APP_NAME} v{core.VERSION}
 
 命令：
   list              列出全部预设 + 当前标记 + 未同步变化提示
-  use <名>          检测 + 同步 + 切换到指定预设
+  use <名>          检测 + 同步 + 启用指定预设
   edit <名>         带界面打开该预设的配置编辑器
   info <名>         打印该预设的大模型相关字段（模型 / URL / 密钥变量…）
   set <名> <字段> <值>
                     改单个字段（直接落盘，走与界面相同的流程）
-  harvest           只同步正在使用的配置到当前预设（不切换）
+  harvest           只同步正在使用的配置到当前预设（不启用）
   save <名>         把正在使用的配置另存为新预设
   diff <名>         对比正在使用的配置与指定预设
   show <名>         打印预设内容
@@ -873,7 +873,7 @@ set 的字段名（中英文均可）：
   reasoning|推理  推理强度          rename|预设名      重命名该预设
 
 选项：
-  --no-harvest      切换时跳过同步（仍会保底备份正在使用的配置）
+  --no-harvest      启用时跳过同步（仍会保底备份正在使用的配置）
   -n, --dry-run     只演练不写入
   -f, --force       跳过运行中检查
   -h, --help        显示本帮助
@@ -897,18 +897,18 @@ def cmd_header(p: core.Paths) -> None:
     _out(APP_NAME)
     _out(f"  预设库  {p.lib}")
     _out(f"  正在使用的    {p.live}")
-    _out("  当前预设 " + (current or "(未记录)")
-         + (f"        (上次切换 {core.human_time(switched)})" if switched else ""))
+    _out("  当前配置 " + (current or "(未记录)")
+         + (f"        (上次启用 {core.human_time(switched)})" if switched else ""))
     _out("  进程检查 " + ("拦截（宿主应用运行中，共 %d 个进程）" % len(hits) if hits
                         else "通过（宿主应用未运行）"))
     if src != "file":
         _out(f"  [i] {core.guard_source_text(p, src)}")
     if current and changed:
-        _out(f"  [!] 正在使用的配置有未同步的变化（约 {n} 行），切换前会自动同步回 {current}")
+        _out(f"  [!] 正在使用的配置有未同步的变化（约 {n} 行），启用前会自动同步回 {current}")
     elif current_missing_note(p, current):
-        _out(f"  [!] 状态记录指向的预设「{current}」已不存在，将按无状态处理。")
+        _out(f"  [!] 预设「{current}」已被删除，启用其他配置后预设中消失，仅备份。")
     elif not current:
-        _out("  [!] 未找到「当前预设」记录")
+        _out("  [!] 当前配置未记录（正在使用的配置不属于任何预设）")
 
 
 def current_missing_note(p: core.Paths, current) -> bool:
@@ -1105,7 +1105,7 @@ def cmd_menu(p: core.Paths) -> int:
         current, _ = core.read_state(p)
         _out("")
         try:
-            raw = input("输入编号切换，s <名字> 另存为新预设，h 只同步不切换，"
+            raw = input("输入编号启用，s <名字> 另存为新预设，h 只同步不启用，"
                         "d <名字> 看差异，i <名字> 看字段，"
                         "k <名字> <字段> <值> 改字段，回车取消: ").strip()
         except (EOFError, KeyboardInterrupt):

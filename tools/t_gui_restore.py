@@ -98,15 +98,28 @@ def worker():
         chk("界面就绪", wait_ready())
         time.sleep(.6)
         print("== 新入口 ==")
-        for bid in ("b-copy", "b-delete", "b-history"):
-            chk(f"{bid} 存在", js(f"!!document.getElementById('{bid}')"))
-        chk("复制/删除已收进「配置」菜单",
-            js("!!document.querySelector('#menubar .mpanel #b-copy')")
-            and js("!!document.querySelector('#menubar .mpanel #b-delete')"))
+        # IMP-031：复制 / 删除已从顶栏「配置」菜单移入卡片右键菜单；
+        # 历史恢复仍在「工具」菜单里。
+        chk("b-history 仍在顶栏工具菜单", js("!!document.getElementById('b-history')"))
+        chk("复制/删除已从顶栏移除（改由右键菜单承担）",
+            not js("!!document.getElementById('b-copy')")
+            and not js("!!document.getElementById('b-delete')"))
         chk("历史恢复已收进「工具」菜单",
             js("!!document.querySelector('#menubar .mpanel #b-history')"))
-        chk("复制/删除同时可经卡片右键到达", js("!!document.getElementById('ctxmenu')"))
-        chk("当前配置删除按钮禁用", js("document.getElementById('b-delete').disabled") is True)
+        # 能力没丢：右键菜单里能到「复制」「删除」
+        _ctx = js("""(function(){
+              SELECTED='b'; renderPresets(); openCtx('b', 10, 10);
+              var t=[...document.querySelectorAll('#ctxmenu button.mi')].map(x=>x.textContent.trim());
+              closeCtx(); return t; })()""")
+        chk("复制可经卡片右键到达", isinstance(_ctx, list) and "复制" in _ctx, _ctx)
+        chk("删除可经卡片右键到达", isinstance(_ctx, list) and "删除" in _ctx, _ctx)
+        # 当前预设的「删除」在右键菜单里应是禁用态
+        _del_disabled = js("""(function(){
+              SELECTED='a'; renderPresets(); openCtx('a', 10, 10);
+              var b=[...document.querySelectorAll('#ctxmenu button.mi')]
+                    .find(x=>x.textContent.trim()==='删除');
+              var d=b?b.disabled:null; closeCtx(); return d; })()""")
+        chk("当前配置的删除项禁用", _del_disabled is True, _del_disabled)
 
         print("== 编辑器 dirty：无变化不打扰 ==")
         js("openEditor('a')")
@@ -159,7 +172,10 @@ def worker():
         chk("放弃向导后关闭", wait("document.getElementById('backdrop').classList.contains('on')", False))
 
         print("== 复制 ==")
-        js("SELECTED='b';renderPresets();renderButtons();document.getElementById('b-copy').click()")
+        # IMP-031：复制不再有顶栏按钮，改从卡片右键菜单进（同一份 doCopy 实现）。
+        js("SELECTED='b';renderPresets();renderButtons();openCtx('b',10,10);")
+        js("""[...document.querySelectorAll('#ctxmenu button.mi')]
+                .find(x=>x.textContent.trim()==='复制').click();""")
         chk("复制建议名称", wait("document.getElementById('copy-name') && document.getElementById('copy-name').value", "b-copy"), js("document.getElementById('m-title').textContent"))
         js("document.querySelector('#m-foot button:last-child').click()")
         chk("复制任务完成", wait("(typeof BUSY !== 'undefined' && BUSY) ? 0 : 1", 1, 12))
@@ -168,7 +184,10 @@ def worker():
         chk("复制未启用", core.read_state(paths)[0] == "a")
 
         print("== 删除 ==")
-        js("SELECTED='b-copy';renderPresets();renderButtons();document.getElementById('b-delete').click()")
+        # IMP-031：删除同样改从卡片右键菜单进。
+        js("SELECTED='b-copy';renderPresets();renderButtons();openCtx('b-copy',10,10);")
+        js("""[...document.querySelectorAll('#ctxmenu button.mi')]
+                .find(x=>x.textContent.trim()==='删除').click();""")
         chk("删除要求输入名称", wait("!!document.getElementById('delete-name')", True))
         js("document.getElementById('delete-name').value='wrong';document.querySelector('#m-foot button:last-child').click()")
         time.sleep(.4)

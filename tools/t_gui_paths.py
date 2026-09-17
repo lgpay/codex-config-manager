@@ -75,7 +75,7 @@ def wait(expr, want=True, timeout=12):
     return False
 
 def open_paths():
-    """打开「配置位置」弹层。
+    """打开「设置」弹层。
 
     产品在 BUSY（有操作执行中）时会忽略这次点击并提示「请稍候」——这是设计行为。
     探针若不等界面空闲就点，负载高时会抢跑（表现为弹层打不开、后续断言连锁失败），
@@ -83,12 +83,13 @@ def open_paths():
     """
     wait("!BUSY", True, timeout=10)
     js("document.getElementById('b-paths').click()")
-    return wait("document.getElementById('m-title').textContent", "配置位置")
+    return wait("document.getElementById('m-title').textContent", "设置")
 
 def worker():
     try:
         chk("界面状态已加载", wait("(typeof STATE!=='undefined'&&STATE)?1:0",1))
-        chk("无有效设置时首次向导自动打开", wait("document.getElementById('m-title').textContent", "首次设置配置位置"), js("document.getElementById('m-title').textContent"))
+        # IMP-031：弹层标题与菜单项都从「配置位置」统一为「设置」。
+        chk("无有效设置时首次向导自动打开", wait("document.getElementById('m-title').textContent", "首次设置"), js("document.getElementById('m-title').textContent"))
         chk("损坏设置显示明确恢复状态", "设置文件损坏" in (js("document.getElementById('m-body').textContent") or ""))
         chk("向导有 Codex 路径输入", js("!!document.getElementById('path-home')"))
         chk("向导有预设路径输入", js("!!document.getElementById('path-configs')"))

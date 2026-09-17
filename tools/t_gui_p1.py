@@ -1,7 +1,7 @@
 # -*- coding: utf-8 -*-
 """IMP-003/004/005/006 的新 GUI 无头探针。
 
-覆盖「官方 / 第三方新建向导」「保存 vs 保存并启用」「本地检查（不联网）」
+覆盖「官方 / 第三方新建向导」「保存 vs 保存并启用」「检查配置」
 「第三方连接测试（逐次确认、一次性 token、禁用项显式列出 TLS/不跟随跳转/超时/费用）」
 「恢复之前的配置」等用户可见链路。
 
@@ -128,25 +128,35 @@ def worker():
         chk("界面就绪（STATE 已加载）", wait_ready(), "STATE 未就绪")
         time.sleep(0.5)
 
-        print("== IMP-003：新建配置向导 == ")
+        print("== IMP-003/036/037：新建 == ")
         js("document.getElementById('b-new').click();")
-        chk("向导弹层打开", wait_modal(True))
+        chk("新建弹层打开", wait_modal(True))
         time.sleep(0.4)
-        chk("标题为「新建配置向导」",
-            "新建配置向导" in (js("document.getElementById('m-title').textContent") or ""),
+        # IMP-036 简化标题，IMP-037 进一步统一成顶栏按钮的「新建」两个字；开头那句步骤说明也去掉了。
+        chk("标题为「新建」（与顶栏按钮一致）",
+            (js("document.getElementById('m-title').textContent") or "").strip() == "新建",
             js("document.getElementById('m-title').textContent"))
+        chk("模板名只留名字（不带括号说明）",
+            "官方服务" in (js("document.getElementById('w-kind').textContent") or "")
+            and "（" not in (js("document.getElementById('w-kind').textContent") or ""),
+            js("document.getElementById('w-kind').textContent"))
         # IMP-026：官方模板不再渲染这些字段（原来是 display:none 隐藏）
+        # IMP-038：断言迁移 —— #w-third 包裹层已删（向导改用与编辑器一致的 .fl/.fi 扁平结构），
+        # 判据改为「这五个字段是否被渲染出来」。
+        _TP_FIELDS = ["w-model", "w-model_provider", "w-base_url", "w-env_key", "w-wire_api"]
         chk("默认官方：完全没有第三方字段",
-            js("!document.getElementById('w-third') && !document.getElementById('w-model')"),
-            js("!!document.getElementById('w-third')"))
+            js("!document.getElementById('w-model') && !document.getElementById('w-model_provider')"),
+            js("!!document.getElementById('w-model')"))
 
         # 切到第三方
         js("""(() => { const s = document.getElementById('w-kind');
               s.value = 'third_party';
               s.dispatchEvent(new Event('change')); return 1; })()""")
         time.sleep(0.5)
-        chk("切第三方：第三方字段出现",
-            js("!!document.getElementById('w-third') && !!document.getElementById('w-model')"))
+        chk("切第三方：五个字段全部出现",
+            all(js("!!document.getElementById('%s')" % i) for i in _TP_FIELDS),
+            js("[%s].map(function(i){return !!document.getElementById(i);})"
+               % ",".join("'%s'" % i for i in _TP_FIELDS)))
         chk("切第三方：连接测试按钮可用",
             js("document.getElementById('w-connect').disabled") is False)
         # 切回官方
@@ -155,7 +165,7 @@ def worker():
               s.dispatchEvent(new Event('change')); return 1; })()""")
         time.sleep(0.5)
         chk("切回官方：第三方字段再次消失",
-            js("!document.getElementById('w-third') && !document.getElementById('w-model')"))
+            js("!document.getElementById('w-model') && !document.getElementById('w-model_provider')"))
 
         print("== IMP-005：连接确认弹层显式列出安全项（向导内）== ")
         js("""(() => { const s=document.getElementById('w-kind');

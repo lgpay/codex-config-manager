@@ -112,8 +112,18 @@ def worker():
         n = js("STATE.presets.length")
         print(f"  · 真实预设数：{n}")
 
-        print("== 真实数据下的新版结构（IMP-021 ~ IMP-026）==")
-        chk("顶栏三下拉就位", js("document.querySelectorAll('#menubar .mgroup').length") == 3)
+        print("== 真实数据下的新版结构（IMP-021 ~ IMP-033）==")
+        # IMP-031/037：顶栏为「新建」「设置」两个直按钮 + 工具 / 帮助两个下拉。
+        chk("顶栏两个下拉就位（工具 / 帮助）",
+            js("document.querySelectorAll('#menubar .mgroup').length") == 2,
+            js("document.querySelectorAll('#menubar .mgroup').length"))
+        chk("顶栏两个直按钮就位（新建 / 设置）",
+            js("[...document.querySelectorAll('#menubar .mact')].map(x=>x.textContent.trim())")
+            == ["新建", "设置"]
+            and not js("!!document.querySelector('.mpanel .mact')"),
+            js("[...document.querySelectorAll('#menubar .mact')].map(x=>x.textContent.trim())"))
+        chk("顶栏已无标题与图标",
+            js("!document.querySelector('.topbar h1')") and js("!document.querySelector('.topbar .logo')"))
         chk("右侧操作边栏存在", js("!!document.getElementById('sidebar')"))
         chk("主区只有两个按钮，且都在边栏内",
             js("[...document.querySelectorAll('.body button')].map(b=>b.id)") == ["b-switch", "b-chatgpt"]
